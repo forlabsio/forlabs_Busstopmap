@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>마라톤 노선 관리</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="anonymous"/>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        .main-container {
+            height: calc(100vh - 64px);
+        }
+    </style>
+</head>
+<body>
+    <!-- 헤더 -->
+    <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
+        <h1 class="text-2xl font-bold">마라톤 노선 관리</h1>
+        <div>
+            <label for="region-select" class="mr-2">지역 선택:</label>
+            <select id="region-select" class="text-black px-3 py-1 rounded">
+                <option value="">지역을 선택하세요</option>
+            </select>
+        </div>
+    </header>
+
+    <!-- 메인 컨테이너 -->
+    <div class="main-container flex">
+        <!-- 지도 영역 -->
+        <div id="map" class="w-7/10 flex-grow"></div>
+
+        <!-- 사이드바 -->
+        <div class="w-3/10 bg-gray-100 p-4 overflow-y-auto">
+            <div class="mb-4">
+                <label for="route-select" class="block mb-2 font-semibold">노선 선택:</label>
+                <select id="route-select" class="w-full px-3 py-2 border rounded">
+                    <option value="">새 노선</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <h3 class="font-semibold mb-2">선택된 정류장</h3>
+                <div id="selected-stops" class="bg-white p-3 rounded border min-h-[200px] max-h-[400px] overflow-y-auto">
+                    <p class="text-gray-500 text-sm">정류장을 클릭하여 노선을 만드세요</p>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <button id="btn-new-route" class="w-full bg-green-500 text-white py-2 rounded hover:bg-green-600">
+                    새 노선 만들기
+                </button>
+                <button id="btn-save-route" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
+                    노선 저장
+                </button>
+                <button id="btn-delete-route" class="w-full bg-red-500 text-white py-2 rounded hover:bg-red-600">
+                    노선 삭제
+                </button>
+                <button id="btn-reset" class="w-full bg-gray-500 text-white py-2 rounded hover:bg-gray-600">
+                    초기화
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV 데이터 (나중에 추가) -->
+    <script type="text/csv" id="bus-stops-data"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin="anonymous"></script>
+
+    <!-- PapaParse -->
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <!-- 애플리케이션 로직 -->
+    <script>
+        console.log('마라톤 노선 관리 앱 초기화');
+    </script>
+</body>
+</html>
