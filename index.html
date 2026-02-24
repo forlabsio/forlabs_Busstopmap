@@ -64661,8 +64661,15 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                     return; // 잘못된 좌표 무시
                 }
 
-                // 마커 생성
-                const marker = L.marker([lat, lng])
+                // 마커 생성 (CircleMarker 사용 - CORS 문제 해결)
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 6,
+                    fillColor: '#3b82f6',
+                    color: '#1e40af',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                })
                     .bindTooltip(stop.정류장명, { permanent: false })
                     .addTo(AppState.map);
 
@@ -64688,12 +64695,10 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             if (index >= 0) {
                 // 선택 해제
                 AppState.currentRoute.stops.splice(index, 1);
-                marker.setIcon(L.icon({
-                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41]
-                }));
+                marker.setStyle({
+                    fillColor: '#3b82f6',
+                    color: '#1e40af'
+                });
                 console.log(`정류장 제거: ${stop.정류장명}`);
             } else {
                 // 선택 추가
@@ -64705,13 +64710,10 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                 });
 
                 // 마커 강조 (빨간색)
-                marker.setIcon(L.icon({
-                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    className: 'selected-marker'
-                }));
+                marker.setStyle({
+                    fillColor: '#ef4444',
+                    color: '#dc2626'
+                });
 
                 console.log(`정류장 추가: ${stop.정류장명}`);
             }
