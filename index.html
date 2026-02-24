@@ -343,9 +343,30 @@
             }
         }
 
-        // Polyline 업데이트 (임시)
+        // Polyline 업데이트
         function updatePolyline() {
-            console.log('Polyline 업데이트 (다음 Task에서 구현)');
+            // 기존 Polyline 제거
+            if (AppState.polyline) {
+                map.removeLayer(AppState.polyline);
+                AppState.polyline = null;
+            }
+
+            // 선택된 정류장이 2개 미만이면 Polyline 그리지 않음
+            if (AppState.currentRoute.stops.length < 2) {
+                return;
+            }
+
+            // 좌표 배열 생성
+            const latlngs = AppState.currentRoute.stops.map(stop => [stop.lat, stop.lng]);
+
+            // Polyline 생성
+            AppState.polyline = L.polyline(latlngs, {
+                color: 'blue',
+                weight: 3,
+                opacity: 0.7
+            }).addTo(map);
+
+            console.log(`Polyline 그려짐: ${AppState.currentRoute.stops.length}개 정류장 연결`);
         }
 
         // 지도 초기화
