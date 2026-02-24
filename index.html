@@ -39,7 +39,7 @@
             width: 100%; border-collapse: collapse; margin-top: 20px;
         }
         .print-table th, .print-table td {
-            border: 1px solid #ddd; padding: 12px 8px; text-align: left;
+            border: 1px solid #ddd; padding: 12px 8px; text-align: center;
         }
         .print-table th {
             background-color: #3b82f6; color: white; font-weight: bold;
@@ -65059,6 +65059,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                 cell1.textContent = (i + 1);
                 
                 var cell2 = document.createElement('td');
+                cell2.style.textAlign = 'center';
                 cell2.style.fontWeight = 'bold';
                 cell2.textContent = stop.name;
                 
