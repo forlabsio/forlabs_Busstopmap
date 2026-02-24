@@ -156,6 +156,9 @@
         // 전역 변수 추가
         let allBusStopsData = [];
 
+        // localStorage 키
+        const STORAGE_KEY = 'marathon-routes';
+
         // 지역 선택 드롭다운 초기화
         function populateRegionDropdown(busStops) {
             // 시도명 중복 제거
@@ -369,6 +372,201 @@
             console.log(`Polyline 그려짐: ${AppState.currentRoute.stops.length}개 정류장 연결`);
         }
 
+        // 노선 저장
+        function saveRoute() {
+            if (AppState.currentRoute.stops.length === 0) {
+                alert('정류장을 하나 이상 선택하세요');
+                return;
+            }
+
+            const name = prompt('노선 이름을 입력하세요', AppState.currentRoute.name);
+            if (!name) return;
+
+            const route = {
+                id: AppState.currentRoute.id || `route-${Date.now()}`,
+                name: name,
+                region: AppState.currentRegion,
+                stops: AppState.currentRoute.stops,
+                createdAt: new Date().toISOString()
+            };
+
+            // localStorage에서 기존 데이터 로드
+            const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"routes":[]}');
+
+            // 기존 노선 업데이트 또는 새로 추가
+            const index = data.routes.findIndex(r => r.id === route.id);
+            if (index >= 0) {
+                data.routes[index] = route;
+                console.log('노선 업데이트:', name);
+            } else {
+                data.routes.push(route);
+                console.log('새 노선 저장:', name);
+            }
+
+            // localStorage에 저장
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+                // 상태 업데이트
+                AppState.currentRoute.id = route.id;
+                AppState.currentRoute.name = name;
+                AppState.savedRoutes = data.routes;
+
+                // 드롭다운 업데이트
+                updateRouteDropdown();
+
+                alert('노선이 저장되었습니다');
+            } catch (e) {
+                console.error('저장 실패:', e);
+                alert('저장 공간이 부족합니다. 일부 노선을 삭제하세요');
+            }
+        }
+
+        // 저장된 노선 목록 로드
+        function loadSavedRoutes() {
+            const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"routes":[]}');
+            AppState.savedRoutes = data.routes;
+            console.log(`${data.routes.length}개의 저장된 노선 로드됨`);
+            return data.routes;
+        }
+
+        // 노선 선택 드롭다운 업데이트
+        function updateRouteDropdown() {
+            const select = document.getElementById('route-select');
+
+            // 기존 옵션 제거 (첫 번째 제외)
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            // 저장된 노선 추가
+            AppState.savedRoutes.forEach(route => {
+                const option = document.createElement('option');
+                option.value = route.id;
+                option.textContent = route.name;
+                select.appendChild(option);
+            });
+
+            // 현재 노선이 있으면 선택
+            if (AppState.currentRoute.id) {
+                select.value = AppState.currentRoute.id;
+            }
+        }
+
+        // 노선 불러오기
+        function loadRoute(routeId) {
+            if (!routeId) {
+                // "새 노선" 선택
+                resetCurrentRoute();
+                return;
+            }
+
+            const route = AppState.savedRoutes.find(r => r.id === routeId);
+            if (!route) {
+                console.error('노선을 찾을 수 없습니다:', routeId);
+                return;
+            }
+
+            console.log('노선 불러오기:', route.name);
+
+            // 지역이 다르면 먼저 변경
+            if (route.region !== AppState.currentRegion) {
+                document.getElementById('region-select').value = route.region;
+                AppState.currentRegion = route.region;
+
+                const filtered = allBusStopsData.filter(stop => stop.시도명 === route.region);
+                AppState.allBusStops = filtered;
+                renderMarkers(filtered);
+            }
+
+            // 현재 노선 상태 업데이트
+            AppState.currentRoute = {
+                id: route.id,
+                name: route.name,
+                region: route.region,
+                stops: [...route.stops]
+            };
+
+            // UI 업데이트
+            updateSelectedStopsUI();
+            highlightSelectedMarkers();
+            updatePolyline();
+        }
+
+        // 선택된 마커 강조
+        function highlightSelectedMarkers() {
+            // 모든 마커 초기화
+            AppState.markers.forEach(marker => {
+                marker.setIcon(L.icon({
+                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41]
+                }));
+            });
+
+            // 선택된 마커만 강조
+            AppState.currentRoute.stops.forEach(stop => {
+                const marker = AppState.markers.get(stop.id);
+                if (marker) {
+                    marker.setIcon(L.icon({
+                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        className: 'selected-marker'
+                    }));
+                }
+            });
+        }
+
+        // 현재 노선 초기화
+        function resetCurrentRoute() {
+            AppState.currentRoute = {
+                id: null,
+                name: "새 노선",
+                region: AppState.currentRegion,
+                stops: []
+            };
+
+            updateSelectedStopsUI();
+            highlightSelectedMarkers();
+            updatePolyline();
+
+            console.log('노선 초기화됨');
+        }
+
+        // 노선 삭제
+        function deleteRoute() {
+            if (!AppState.currentRoute.id) {
+                alert('저장된 노선이 아닙니다');
+                return;
+            }
+
+            if (!confirm(`"${AppState.currentRoute.name}" 노선을 삭제하시겠습니까?`)) {
+                return;
+            }
+
+            const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"routes":[]}');
+            data.routes = data.routes.filter(r => r.id !== AppState.currentRoute.id);
+
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                AppState.savedRoutes = data.routes;
+
+                console.log('노선 삭제됨:', AppState.currentRoute.name);
+
+                // 상태 초기화
+                resetCurrentRoute();
+                updateRouteDropdown();
+
+                alert('노선이 삭제되었습니다');
+            } catch (e) {
+                console.error('삭제 실패:', e);
+                alert('삭제에 실패했습니다');
+            }
+        }
+
         // 지도 초기화
         function initMap() {
             // 서울 시청 중심으로 지도 생성
@@ -394,8 +592,24 @@
             // 지역 드롭다운 초기화
             populateRegionDropdown(allBusStopsData);
 
+            // 저장된 노선 로드
+            loadSavedRoutes();
+            updateRouteDropdown();
+
             // 이벤트 리스너 등록
             document.getElementById('region-select').addEventListener('change', onRegionChange);
+            document.getElementById('route-select').addEventListener('change', function(e) {
+                loadRoute(e.target.value);
+            });
+
+            document.getElementById('btn-new-route').addEventListener('click', function() {
+                document.getElementById('route-select').value = '';
+                resetCurrentRoute();
+            });
+
+            document.getElementById('btn-save-route').addEventListener('click', saveRoute);
+            document.getElementById('btn-delete-route').addEventListener('click', deleteRoute);
+            document.getElementById('btn-reset').addEventListener('click', resetCurrentRoute);
         });
     </script>
 </body>
