@@ -74,6 +74,28 @@
         <!-- 지도 영역 -->
         <div id="map" class="w-7/10 flex-grow"></div>
 
+    <!-- 인쇄용 영역 -->
+    <div id="print-area" style="display: none; padding: 40px;">
+        <h1 style="font-size: 24px; font-weight: bold;">마라톤 노선 정류장 목록</h1>
+        <p id="print-route-name" style="font-size: 18px; color: #3b82f6; margin: 10px 0;"></p>
+        <p id="print-date" style="font-size: 14px; color: #666; margin: 5px 0;"></p>
+        <p style="font-size: 14px; color: #666; margin: 10px 0;">총 <span id="print-total-stops"></span>개 정류장</p>
+        
+        <table class="print-table">
+            <thead>
+                <tr>
+                    <th style="width: 60px;">순서</th>
+                    <th style="width: 200px;">정류장명</th>
+                    <th style="width: 150px;">정류장번호</th>
+                    <th style="width: 100px;">완료</th>
+                </tr>
+            </thead>
+            <tbody id="print-table-body"></tbody>
+        </table>
+        
+        <p id="print-timestamp" style="font-size: 12px; color: #999; margin-top: 30px;"></p>
+    </div>
+
         <!-- 사이드바 -->
         <div class="w-3/10 bg-gray-100 p-4 overflow-y-auto">
 
