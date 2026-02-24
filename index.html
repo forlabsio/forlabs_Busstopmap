@@ -64502,7 +64502,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/leaflet-image@0.4.0/leaflet-image.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <!-- PapaParse -->
     <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
@@ -65082,27 +65082,29 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             
             // 지도 렌더링 완료 대기 후 캡처
             setTimeout(function() {
-                leafletImage(AppState.map, function(err, canvas) {
-                hideLoading();
-                
-                if (err) {
-                    console.error('지도 캡처 오류:', err);
+                html2canvas(document.getElementById('map'), {
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false
+                }).then(function(canvas) {
+                    hideLoading();
+                    
+                    // 캡처한 지도를 이미지로 설정
+                    var mapImage = document.getElementById('print-map-image');
+                    mapImage.src = canvas.toDataURL();
+                    
+                    console.log('지도 캡처 완료');
+                    
+                    // 이미지 로딩 완료 후 인쇄
+                    mapImage.onload = function() {
+                        proceedToPrint();
+                    };
+                }).catch(function(error) {
+                    hideLoading();
+                    console.error('지도 캡처 오류:', error);
                     alert('지도 캡처에 실패했습니다. 표만 인쇄됩니다.');
                     proceedToPrint();
-                    return;
-                }
-
-                // 캡처한 지도를 이미지로 설정
-                var mapImage = document.getElementById('print-map-image');
-                mapImage.src = canvas.toDataURL();
-                
-                console.log('지도 캡처 완료');
-                
-                // 이미지 로딩 완료 후 인쇄
-                mapImage.onload = function() {
-                    proceedToPrint();
-                };
-            });
+                });
         }, 500);
         }
 
