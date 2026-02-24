@@ -64650,7 +64650,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
 
             // 첫 번째 정류장으로 지도 중심 이동
             const firstStop = busStops[0];
-            map.setView([parseFloat(firstStop.위도), parseFloat(firstStop.경도)], 13);
+            AppState.map.setView([parseFloat(firstStop.위도), parseFloat(firstStop.경도)], 13);
 
             // 각 정류장에 마커 생성
             busStops.forEach(stop => {
