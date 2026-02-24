@@ -64999,7 +64999,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
 
         // 인쇄하기 함수
         function printRoute() {
-            if (AppState.selectedStops.length === 0) {
+            if (AppState.currentRoute.stops.length === 0) {
                 alert('인쇄할 정류장이 없습니다. 먼저 노선을 만들어주세요.');
                 return;
             }
@@ -65012,15 +65012,15 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             // 인쇄 영역 업데이트
             document.getElementById('print-route-name').textContent = '노선명: ' + routeName;
             document.getElementById('print-date').textContent = '작성일: ' + dateStr;
-            document.getElementById('print-total-stops').textContent = AppState.selectedStops.length;
+            document.getElementById('print-total-stops').textContent = AppState.currentRoute.stops.length;
             document.getElementById('print-timestamp').textContent = '생성일: ' + timestamp;
 
             // 테이블 내용 생성
             var tbody = document.getElementById('print-table-body');
             tbody.innerHTML = '';
 
-            for (var i = 0; i < AppState.selectedStops.length; i++) {
-                var stop = AppState.selectedStops[i];
+            for (var i = 0; i < AppState.currentRoute.stops.length; i++) {
+                var stop = AppState.currentRoute.stops[i];
                 var row = document.createElement('tr');
                 
                 var cell1 = document.createElement('td');
