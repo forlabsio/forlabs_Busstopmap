@@ -64979,12 +64979,13 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
             showLoading();
-
+            
             try {
+                // 지도 초기화
                 initMap();
 
-            // CSV 데이터 파싱
-            allBusStopsData = parseCSVData();
+                // CSV 데이터 파싱
+                allBusStopsData = parseCSVData();
             console.log('파싱된 데이터 샘플:', allBusStopsData.slice(0, 3));
 
             // 지역 드롭다운 초기화
@@ -65008,6 +65009,16 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             document.getElementById('btn-save-route').addEventListener('click', saveRoute);
             document.getElementById('btn-delete-route').addEventListener('click', deleteRoute);
             document.getElementById('btn-reset').addEventListener('click', resetCurrentRoute);
+                
+                // 모든 초기화 완료
+                console.log('애플리케이션 초기화 완료');
+                hideLoading();
+                
+            } catch (e) {
+                console.error('초기화 오류:', e);
+                alert('애플리케이션을 초기화할 수 없습니다: ' + e.message);
+                hideLoading();
+            }
         });
     </script>
 </body>
