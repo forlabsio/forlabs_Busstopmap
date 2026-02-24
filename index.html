@@ -26,6 +26,9 @@
         .main-container {
             height: calc(100vh - 64px);
         }
+        .selected-marker {
+            filter: hue-rotate(120deg) saturate(150%);
+        }
     </style>
 </head>
 <body>
@@ -208,7 +211,7 @@
             AppState.markers.clear();
         }
 
-        // 마커 렌더링 (임시 구현)
+        // 마커 렌더링
         function renderMarkers(busStops) {
             clearMarkers();
 
@@ -220,7 +223,129 @@
             const firstStop = busStops[0];
             map.setView([parseFloat(firstStop.위도), parseFloat(firstStop.경도)], 13);
 
-            console.log('마커 렌더링 준비 완료 (다음 Task에서 구현)');
+            // 각 정류장에 마커 생성
+            busStops.forEach(stop => {
+                const lat = parseFloat(stop.위도);
+                const lng = parseFloat(stop.경도);
+
+                if (isNaN(lat) || isNaN(lng)) {
+                    return; // 잘못된 좌표 무시
+                }
+
+                // 마커 생성
+                const marker = L.marker([lat, lng])
+                    .bindTooltip(stop.정류장명, { permanent: false })
+                    .addTo(map);
+
+                // 클릭 이벤트
+                marker.on('click', function() {
+                    onMarkerClick(stop, marker);
+                });
+
+                // 마커 저장
+                AppState.markers.set(stop.정류장고유번호, marker);
+            });
+
+            console.log(`${busStops.length}개의 마커 렌더링 완료`);
+        }
+
+        // 마커 클릭 이벤트 핸들러
+        function onMarkerClick(stop, marker) {
+            const stopId = stop.정류장고유번호;
+
+            // 이미 선택된 정류장인지 확인
+            const index = AppState.currentRoute.stops.findIndex(s => s.id === stopId);
+
+            if (index >= 0) {
+                // 선택 해제
+                AppState.currentRoute.stops.splice(index, 1);
+                marker.setIcon(L.icon({
+                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41]
+                }));
+                console.log(`정류장 제거: ${stop.정류장명}`);
+            } else {
+                // 선택 추가
+                AppState.currentRoute.stops.push({
+                    id: stopId,
+                    name: stop.정류장명,
+                    lat: parseFloat(stop.위도),
+                    lng: parseFloat(stop.경도)
+                });
+
+                // 마커 강조 (빨간색)
+                marker.setIcon(L.icon({
+                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    className: 'selected-marker'
+                }));
+
+                console.log(`정류장 추가: ${stop.정류장명}`);
+            }
+
+            // UI 업데이트
+            updateSelectedStopsUI();
+            updatePolyline();
+        }
+
+        // 선택된 정류장 목록 UI 업데이트
+        function updateSelectedStopsUI() {
+            const container = document.getElementById('selected-stops');
+
+            if (AppState.currentRoute.stops.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">정류장을 클릭하여 노선을 만드세요</p>';
+                return;
+            }
+
+            const html = AppState.currentRoute.stops.map((stop, index) => {
+                return `
+                    <div class="flex justify-between items-center py-2 border-b">
+                        <span>${index + 1}. ${stop.name}</span>
+                        <button class="text-red-500 hover:text-red-700" data-stop-id="${stop.id}">✕</button>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+
+            // 삭제 버튼 이벤트 리스너
+            container.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const stopId = this.getAttribute('data-stop-id');
+                    removeStopById(stopId);
+                });
+            });
+        }
+
+        // ID로 정류장 제거
+        function removeStopById(stopId) {
+            const index = AppState.currentRoute.stops.findIndex(s => s.id === stopId);
+            if (index >= 0) {
+                AppState.currentRoute.stops.splice(index, 1);
+
+                // 마커 아이콘 원래대로
+                const marker = AppState.markers.get(stopId);
+                if (marker) {
+                    marker.setIcon(L.icon({
+                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41]
+                    }));
+                }
+
+                updateSelectedStopsUI();
+                updatePolyline();
+            }
+        }
+
+        // Polyline 업데이트 (임시)
+        function updatePolyline() {
+            console.log('Polyline 업데이트 (다음 Task에서 구현)');
         }
 
         // 지도 초기화
