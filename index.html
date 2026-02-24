@@ -91,7 +91,27 @@
 
     <!-- 애플리케이션 로직 -->
     <script>
-        console.log('마라톤 노선 관리 앱 초기화');
+        // 전역 변수
+        let map = null;
+
+        // 지도 초기화
+        function initMap() {
+            // 서울 시청 중심으로 지도 생성
+            map = L.map('map').setView([37.5665, 126.9780], 12);
+
+            // OpenStreetMap 타일 레이어 추가
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            console.log('지도 초기화 완료');
+        }
+
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+        });
     </script>
 </body>
 </html>
