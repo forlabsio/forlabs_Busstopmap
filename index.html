@@ -94,6 +94,62 @@
         // 전역 변수
         let map = null;
 
+        // 애플리케이션 상태
+        const AppState = {
+            currentRegion: null,
+            allBusStops: [],
+            currentRoute: {
+                id: null,
+                name: "새 노선",
+                region: null,
+                stops: []
+            },
+            savedRoutes: [],
+            markers: new Map(),
+            polyline: null
+        };
+
+        // CSV 데이터 파싱
+        function parseCSVData() {
+            const csvElement = document.getElementById('bus-stops-data');
+            const csvData = csvElement.textContent.trim();
+
+            if (!csvData) {
+                console.log('CSV 데이터가 비어있습니다. 테스트 데이터를 사용합니다.');
+                return getTestData();
+            }
+
+            const parsed = Papa.parse(csvData, {
+                header: true,
+                skipEmptyLines: true
+            });
+
+            if (parsed.errors.length > 0) {
+                console.error('CSV 파싱 오류:', parsed.errors);
+                alert('데이터를 불러올 수 없습니다');
+                return [];
+            }
+
+            console.log(`총 ${parsed.data.length}개의 버스 정류장 로드됨`);
+            return parsed.data;
+        }
+
+        // 테스트용 더미 데이터 (서울 시내 10개 정류장)
+        function getTestData() {
+            return [
+                { "정류장고유번호": "TEST001", "정류장명": "광화문역", "위도": "37.5701", "경도": "126.9756", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST002", "정류장명": "종각역", "위도": "37.5702", "경도": "126.9831", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST003", "정류장명": "시청역", "위도": "37.5663", "경도": "126.9779", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST004", "정류장명": "을지로입구역", "위도": "37.5658", "경도": "126.9822", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST005", "정류장명": "명동역", "위도": "37.5614", "경도": "126.9864", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST006", "정류장명": "서울역", "위도": "37.5547", "경도": "126.9707", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST007", "정류장명": "강남역", "위도": "37.4979", "경도": "127.0276", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST008", "정류장명": "홍대입구역", "위도": "37.5572", "경도": "126.9236", "시도명": "서울특별시" },
+                { "정류장고유번호": "TEST009", "정류장명": "해운대", "위도": "35.1587", "경도": "129.1603", "시도명": "부산광역시" },
+                { "정류장고유번호": "TEST010", "정류장명": "광안리", "위도": "35.1532", "경도": "129.1189", "시도명": "부산광역시" }
+            ];
+        }
+
         // 지도 초기화
         function initMap() {
             // 서울 시청 중심으로 지도 생성
@@ -111,6 +167,10 @@
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
             initMap();
+
+            // CSV 데이터 파싱
+            const busStops = parseCSVData();
+            console.log('파싱된 데이터 샘플:', busStops.slice(0, 3));
         });
     </script>
 </body>
