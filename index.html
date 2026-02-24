@@ -29,6 +29,24 @@
         .selected-marker {
             filter: hue-rotate(120deg) saturate(150%);
         }
+    
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+        .print-table {
+            width: 100%; border-collapse: collapse; margin-top: 20px;
+        }
+        .print-table th, .print-table td {
+            border: 1px solid #ddd; padding: 12px 8px; text-align: left;
+        }
+        .print-table th {
+            background-color: #3b82f6; color: white; font-weight: bold;
+        }
+        .print-table tr:nth-child(even) {
+            background-color: #f9fafb;
+        }
     </style>
 </head>
 <body>
@@ -94,6 +112,7 @@
                     노선 삭제
                 </button>
                 <button id="btn-reset" class="w-full bg-gray-500 text-white py-2 rounded hover:bg-gray-600">
+                    <button id="btn-print" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">📄 인쇄하기</button>
                     초기화
                 </button>
             </div>
@@ -64976,6 +64995,70 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             console.log('지도 초기화 완료');
         }
 
+
+
+        // 인쇄하기 함수
+        function printRoute() {
+            if (AppState.selectedStops.length === 0) {
+                alert('인쇄할 정류장이 없습니다. 먼저 노선을 만들어주세요.');
+                return;
+            }
+
+            var routeName = AppState.currentRoute.name || '저장되지 않은 노선';
+            var today = new Date();
+            var dateStr = today.getFullYear() + '년 ' + (today.getMonth() + 1) + '월 ' + today.getDate() + '일';
+            var timestamp = today.toLocaleString('ko-KR');
+
+            // 인쇄 영역 업데이트
+            document.getElementById('print-route-name').textContent = '노선명: ' + routeName;
+            document.getElementById('print-date').textContent = '작성일: ' + dateStr;
+            document.getElementById('print-total-stops').textContent = AppState.selectedStops.length;
+            document.getElementById('print-timestamp').textContent = '생성일: ' + timestamp;
+
+            // 테이블 내용 생성
+            var tbody = document.getElementById('print-table-body');
+            tbody.innerHTML = '';
+
+            for (var i = 0; i < AppState.selectedStops.length; i++) {
+                var stop = AppState.selectedStops[i];
+                var row = document.createElement('tr');
+                
+                var cell1 = document.createElement('td');
+                cell1.style.textAlign = 'center';
+                cell1.style.fontWeight = 'bold';
+                cell1.textContent = (i + 1);
+                
+                var cell2 = document.createElement('td');
+                cell2.style.fontWeight = 'bold';
+                cell2.textContent = stop.정류장명;
+                
+                var cell3 = document.createElement('td');
+                cell3.style.fontFamily = 'monospace';
+                cell3.style.color = '#666';
+                cell3.textContent = stop.정류장번호;
+                
+                var cell4 = document.createElement('td');
+                cell4.style.textAlign = 'center';
+                cell4.textContent = '☐';
+                
+                row.appendChild(cell1);
+                row.appendChild(cell2);
+                row.appendChild(cell3);
+                row.appendChild(cell4);
+                tbody.appendChild(row);
+            }
+
+            // 인쇄 영역 표시 및 인쇄
+            document.getElementById('print-area').style.display = 'block';
+
+            setTimeout(function() {
+                window.print();
+                setTimeout(function() {
+                    document.getElementById('print-area').style.display = 'none';
+                }, 100);
+            }, 100);
+        }
+
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
             showLoading();
@@ -65009,6 +65092,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             document.getElementById('btn-save-route').addEventListener('click', saveRoute);
             document.getElementById('btn-delete-route').addEventListener('click', deleteRoute);
             document.getElementById('btn-reset').addEventListener('click', resetCurrentRoute);
+            document.getElementById('btn-print').addEventListener('click', printRoute);
                 
                 // 모든 초기화 완료
                 console.log('애플리케이션 초기화 완료');
