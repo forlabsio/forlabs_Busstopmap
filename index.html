@@ -65074,13 +65074,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             console.log('지도 캡처 중...');
             showLoading();
             
-            // 선택한 정류장들로 지도 범위 조정
-            var bounds = L.latLngBounds(AppState.currentRoute.stops.map(function(stop) {
-                return [stop.lat, stop.lng];
-            }));
-            AppState.map.fitBounds(bounds, {padding: [50, 50]});
-            
-            // 지도 렌더링 완료 대기 후 캡처
+            // 현재 지도 뷰를 그대로 캡처 (약간의 렌더링 대기)
             setTimeout(function() {
                 html2canvas(document.getElementById('map'), {
                     useCORS: true,
