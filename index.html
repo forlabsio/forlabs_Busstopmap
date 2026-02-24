@@ -32,6 +32,14 @@
     </style>
 </head>
 <body>
+    <!-- 로딩 인디케이터 -->
+    <div id="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p class="text-center">데이터를 불러오는 중...</p>
+        </div>
+    </div>
+
     <!-- 헤더 -->
     <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
         <h1 class="text-2xl font-bold">마라톤 노선 관리</h1>
@@ -50,6 +58,17 @@
 
         <!-- 사이드바 -->
         <div class="w-3/10 bg-gray-100 p-4 overflow-y-auto">
+
+    <div class="mb-4 bg-blue-50 border border-blue-200 rounded p-3">
+        <p class="text-sm text-blue-800">
+            💡 <strong>사용 방법:</strong><br>
+            1. 지역을 선택하세요<br>
+            2. 지도에서 정류장을 클릭하여 노선을 만드세요<br>
+            3. '노선 저장' 버튼으로 저장하세요
+        </p>
+    </div>
+
+    
             <div class="mb-4">
                 <label for="route-select" class="block mb-2 font-semibold">노선 선택:</label>
                 <select id="route-select" class="w-full px-3 py-2 border rounded">
@@ -64463,7 +64482,17 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
         };
 
         // CSV 데이터 파싱
-        function parseCSVData() {
+
+        // 로딩 인디케이터 표시/숨김
+        function showLoading() {
+            document.getElementById('loading').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+                function parseCSVData() {
             const csvElement = document.getElementById('bus-stops-data');
             const csvData = csvElement.textContent.trim();
 
@@ -64729,8 +64758,27 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                 return;
             }
 
-            const name = prompt('노선 이름을 입력하세요', AppState.currentRoute.name);
+            let name = prompt('노선 이름을 입력하세요', AppState.currentRoute.name);
             if (!name) return;
+
+            // localStorage에서 기존 데이터 로드 (중복 체크용)
+            const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"routes":[]}');
+            
+            // 중복 이름 체크 및 번호 추가
+            const existingNames = data.routes
+                .filter(r => r.id !== AppState.currentRoute.id)
+                .map(r => r.name);
+
+            if (existingNames.includes(name)) {
+                let counter = 2;
+                let newName = `${name} (${counter})`;
+                while (existingNames.includes(newName)) {
+                    counter++;
+                    newName = `${name} (${counter})`;
+                }
+                name = newName;
+                console.log('중복 이름 감지, 변경:', name);
+            }
 
             const route = {
                 id: AppState.currentRoute.id || `route-${Date.now()}`,
@@ -64739,9 +64787,6 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                 stops: AppState.currentRoute.stops,
                 createdAt: new Date().toISOString()
             };
-
-            // localStorage에서 기존 데이터 로드
-            const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"routes":[]}');
 
             // 기존 노선 업데이트 또는 새로 추가
             const index = data.routes.findIndex(r => r.id === route.id);
@@ -64933,7 +64978,10 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
 
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
-            initMap();
+            showLoading();
+
+            try {
+                initMap();
 
             // CSV 데이터 파싱
             allBusStopsData = parseCSVData();
