@@ -81,12 +81,16 @@
         <p id="print-date" style="font-size: 14px; color: #666; margin: 5px 0;"></p>
         <p style="font-size: 14px; color: #666; margin: 10px 0;">총 <span id="print-total-stops"></span>개 정류장</p>
         
+        <div style="margin: 20px 0; border: 2px solid #ddd; padding: 10px;">
+            <h2 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">노선 지도</h2>
+            <img id="print-map-image" style="width: 100%; max-width: 800px; height: auto; display: block; margin: 0 auto;" />
+        </div>
+        
         <table class="print-table">
             <thead>
                 <tr>
-                    <th style="width: 60px;">순서</th>
-                    <th style="width: 200px;">정류장명</th>
-                    <th style="width: 150px;">정류장번호</th>
+                    <th style="width: 80px;">순서</th>
+                    <th>정류장명</th>
                     <th style="width: 100px;">완료</th>
                 </tr>
             </thead>
@@ -64498,6 +64502,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/leaflet-image@0.4.0/leaflet-image.js"></script>
 
     <!-- PapaParse -->
     <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
@@ -65052,27 +65057,49 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                 
                 var cell2 = document.createElement('td');
                 cell2.style.fontWeight = 'bold';
-                cell2.textContent = stop.정류장명;
+                cell2.textContent = stop.name;
                 
                 var cell3 = document.createElement('td');
-                cell3.style.fontFamily = 'monospace';
-                cell3.style.color = '#666';
-                cell3.textContent = stop.정류장번호;
-                
-                var cell4 = document.createElement('td');
-                cell4.style.textAlign = 'center';
-                cell4.textContent = '☐';
+                cell3.style.textAlign = 'center';
+                cell3.textContent = '☐';
                 
                 row.appendChild(cell1);
                 row.appendChild(cell2);
                 row.appendChild(cell3);
-                row.appendChild(cell4);
                 tbody.appendChild(row);
             }
 
-            // 인쇄 영역 표시 및 인쇄
-            document.getElementById('print-area').style.display = 'block';
+            // 지도를 이미지로 캡처
+            console.log('지도 캡처 중...');
+            showLoading();
+            
+            leafletImage(AppState.map, function(err, canvas) {
+                hideLoading();
+                
+                if (err) {
+                    console.error('지도 캡처 오류:', err);
+                    alert('지도 캡처에 실패했습니다. 표만 인쇄됩니다.');
+                    proceedToPrint();
+                    return;
+                }
 
+                // 캡처한 지도를 이미지로 설정
+                var mapImage = document.getElementById('print-map-image');
+                mapImage.src = canvas.toDataURL();
+                
+                console.log('지도 캡처 완료');
+                
+                // 이미지 로딩 완료 후 인쇄
+                mapImage.onload = function() {
+                    proceedToPrint();
+                };
+            });
+        }
+
+        // 실제 인쇄 실행
+        function proceedToPrint() {
+            document.getElementById('print-area').style.display = 'block';
+            
             setTimeout(function() {
                 window.print();
                 setTimeout(function() {
