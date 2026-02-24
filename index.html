@@ -65074,7 +65074,15 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
             console.log('지도 캡처 중...');
             showLoading();
             
-            leafletImage(AppState.map, function(err, canvas) {
+            // 선택한 정류장들로 지도 범위 조정
+            var bounds = L.latLngBounds(AppState.currentRoute.stops.map(function(stop) {
+                return [stop.lat, stop.lng];
+            }));
+            AppState.map.fitBounds(bounds, {padding: [50, 50]});
+            
+            // 지도 렌더링 완료 대기 후 캡처
+            setTimeout(function() {
+                leafletImage(AppState.map, function(err, canvas) {
                 hideLoading();
                 
                 if (err) {
@@ -65095,6 +65103,7 @@ SEB115000120,발산역.우장산힐스테이트,37.5560385,126.8376254,서울특
                     proceedToPrint();
                 };
             });
+        }, 500);
         }
 
         // 실제 인쇄 실행
