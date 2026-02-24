@@ -150,6 +150,79 @@
             ];
         }
 
+        // 전역 변수 추가
+        let allBusStopsData = [];
+
+        // 지역 선택 드롭다운 초기화
+        function populateRegionDropdown(busStops) {
+            // 시도명 중복 제거
+            const regions = [...new Set(busStops.map(stop => stop.시도명))].sort();
+
+            const select = document.getElementById('region-select');
+
+            // 기존 옵션 제거 (첫 번째 제외)
+            while (select.options.length > 1) {
+                select.remove(1);
+            }
+
+            // 지역 옵션 추가
+            regions.forEach(region => {
+                const option = document.createElement('option');
+                option.value = region;
+                option.textContent = region;
+                select.appendChild(option);
+            });
+
+            console.log(`${regions.length}개 지역 로드됨:`, regions);
+        }
+
+        // 지역 변경 이벤트 핸들러
+        function onRegionChange(event) {
+            const selectedRegion = event.target.value;
+
+            if (!selectedRegion) {
+                // 선택 해제 시 마커 제거
+                clearMarkers();
+                AppState.currentRegion = null;
+                return;
+            }
+
+            AppState.currentRegion = selectedRegion;
+            console.log('선택된 지역:', selectedRegion);
+
+            // 해당 지역 정류장 필터링
+            const filtered = allBusStopsData.filter(stop => stop.시도명 === selectedRegion);
+            AppState.allBusStops = filtered;
+
+            console.log(`${filtered.length}개의 정류장 필터링됨`);
+
+            // 마커 렌더링 (다음 Task에서 구현)
+            renderMarkers(filtered);
+        }
+
+        // 마커 제거 (임시 구현)
+        function clearMarkers() {
+            AppState.markers.forEach(marker => {
+                map.removeLayer(marker);
+            });
+            AppState.markers.clear();
+        }
+
+        // 마커 렌더링 (임시 구현)
+        function renderMarkers(busStops) {
+            clearMarkers();
+
+            if (busStops.length === 0) {
+                return;
+            }
+
+            // 첫 번째 정류장으로 지도 중심 이동
+            const firstStop = busStops[0];
+            map.setView([parseFloat(firstStop.위도), parseFloat(firstStop.경도)], 13);
+
+            console.log('마커 렌더링 준비 완료 (다음 Task에서 구현)');
+        }
+
         // 지도 초기화
         function initMap() {
             // 서울 시청 중심으로 지도 생성
@@ -169,8 +242,14 @@
             initMap();
 
             // CSV 데이터 파싱
-            const busStops = parseCSVData();
-            console.log('파싱된 데이터 샘플:', busStops.slice(0, 3));
+            allBusStopsData = parseCSVData();
+            console.log('파싱된 데이터 샘플:', allBusStopsData.slice(0, 3));
+
+            // 지역 드롭다운 초기화
+            populateRegionDropdown(allBusStopsData);
+
+            // 이벤트 리스너 등록
+            document.getElementById('region-select').addEventListener('change', onRegionChange);
         });
     </script>
 </body>
