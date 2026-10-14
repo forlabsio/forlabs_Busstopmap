@@ -637,12 +637,16 @@ def main():
         check('뷰어 모드로 뜸', p.ev("document.body.classList.contains('viewer')"))
         check('검색·지역 필터가 숨겨짐',
               p.ev("getComputedStyle(document.querySelector('.topbar')).display") == 'none')
-        check('노선 선택·메뉴가 숨겨짐', p.ev("""(() => {
-          const hidden = el => !el || getComputedStyle(el).display === 'none';
-          return hidden(document.getElementById('route-picker'))
-              && hidden(document.getElementById('menu-btn'))
-              && hidden(document.getElementById('btn-save'))
-              && hidden(document.getElementById('btn-share'));
+        # display 값만 보면 부모가 숨겨진 경우를 놓친다. 실제로 보이는지로 판정한다.
+        check('편집용 요소가 화면에 없음', p.ev("""(() => {
+          const invisible = id => {
+            const el = document.getElementById(id);
+            if (!el) return true;
+            const r = el.getBoundingClientRect();
+            return el.offsetParent === null || r.width === 0 || r.height === 0;
+          };
+          return ['route-picker','menu-btn','btn-save','btn-share','search','tool-undo']
+            .every(invisible);
         })()"""))
         check('인쇄 버튼만 남음',
               p.ev("getComputedStyle(document.getElementById('btn-print-viewer')).display") != 'none')

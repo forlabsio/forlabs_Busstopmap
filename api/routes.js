@@ -8,15 +8,16 @@ const KEY = 'routes.json';
 const EMPTY = { routes: [], version: 0 };
 
 /**
- * Blob 공개 URL은 CDN에 캐시되어 쓰기 직후 약 10초간 옛 내용을 준다.
- * - 판 번호는 메타데이터(uploadedAt)에서 읽는다. 이쪽은 바로 갱신된다.
- * - 본문은 그 시각을 쿼리로 붙여 캐시 키를 바꿔서 받는다.
+ * Blob 공개 URL은 CDN에 캐시된다. 판 번호만 바꿔서는 부족했다.
+ * 저장 직후 읽으면 "새 판 번호 + 옛 본문"이 그 키에 캐시되어 한동안 남는다.
+ * 그래서 매 요청마다 다른 값을 붙여 캐시를 아예 타지 않게 한다.
  */
 async function readStore() {
   try {
     const meta = await head(KEY);
     const version = new Date(meta.uploadedAt).getTime();
-    const res = await fetch(`${meta.url}?v=${version}`, { cache: 'no-store' });
+    const bust = `${version}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const res = await fetch(`${meta.url}?v=${bust}`, { cache: 'no-store' });
     if (!res.ok) return { ...EMPTY, version };
     const data = await res.json();
     return { routes: data.routes || [], version };
