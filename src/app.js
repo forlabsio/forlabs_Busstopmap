@@ -31,6 +31,41 @@ const S = {
 const $ = id => document.getElementById(id);
 const fmtKm = km => (km < 10 ? km.toFixed(2) : km.toFixed(1));
 
+/* 편집 되돌리기 — 노선을 바꾸기 "전에" 스냅샷을 남긴다 */
+const undoStack = [];
+
+function snapshot(label) {
+  undoStack.push({
+    label,
+    name: S.route.name,
+    id: S.route.id,
+    stops: S.route.stops.map(s => ({ ...s })),
+  });
+  if (undoStack.length > 30) undoStack.shift();
+}
+
+function undo() {
+  const prev = undoStack.pop();
+  if (!prev) return toast('되돌릴 작업이 없습니다');
+  S.route.id = prev.id;
+  S.route.name = prev.name;
+  S.route.stops = prev.stops;
+  renderPanel();
+  drawRoute({ fit: true });
+  refreshRouteSelect();
+  toast(`실행 취소: ${prev.label}`);
+}
+
+/** 편집 중인 노선이 저장본과 다른지 표시한다 */
+function updateDirty() {
+  const el = $('dirty');
+  if (!el) return;
+  const saved = S.route.id && S.store.routes.find(r => r.id === S.route.id);
+  const dirty = S.route.stops.length > 0 &&
+    (!saved || JSON.stringify(saved.stops) !== JSON.stringify(S.route.stops) || saved.name !== S.route.name);
+  el.hidden = S.viewer || !dirty;
+}
+
 function toast(msg, ms = 2200) {
   const el = $('toast');
   el.textContent = msg;
@@ -283,6 +318,7 @@ function renderPanel() {
   $('stat-n').textContent = stops.length;
   $('stat-time').innerHTML = `${Math.round(total / PACE_KMH * 60)}<small>분</small>`;
   $('route-name').value = S.route.name;
+  updateDirty();
 
   if (!stops.length) {
     list.innerHTML = `<div class="empty">${S.viewer ? '표시할 정류장이 없습니다.'
@@ -309,6 +345,7 @@ function bindPanelEvents() {
   list.addEventListener('click', e => {
     const del = e.target.closest('[data-del]');
     if (!del) return;
+    snapshot('정류장 제거');
     S.route.stops.splice(Number(del.dataset.del), 1);
     renderPanel(); drawRoute();
   });
@@ -334,6 +371,7 @@ function bindPanelEvents() {
     list.querySelectorAll('.drop-target').forEach(el => el.classList.remove('drop-target'));
     if (!item || from === null) return;
     const to = Number(item.dataset.i);
+    snapshot('순서 변경');
     const [moved] = S.route.stops.splice(from, 1);
     S.route.stops.splice(to, 0, moved);
     from = null;
@@ -348,6 +386,7 @@ function bindPanelEvents() {
 }
 
 function toggleStop(id) {
+  snapshot('정류장 추가/제거');
   const i = S.route.stops.findIndex(s => s.id === id);
   if (i >= 0) {
     S.route.stops.splice(i, 1);
@@ -480,17 +519,36 @@ function drawPreview() {
 function updateComposeUI() {
   const n = S.preview.length;
   const km = totalDistance(S.preview);
+  const had = S.route.stops.length;
   $('btn-wp-apply').disabled = n === 0;
+  $('btn-wp-apply').textContent = had ? '기존 노선 교체' : '이대로 확정';
+  $('btn-wp-append').hidden = !had;
+  $('btn-wp-append').disabled = n === 0;
   $('compose-status').textContent = S.waypoints.length < 2
     ? '지도를 클릭해 출발 → 경유 → 도착 순으로 찍으세요 (2개 이상)'
     : `거점 ${S.waypoints.length}개 · 정류장 ${n}개 · ${fmtKm(km)}km — 거점을 더 찍으면 도로를 더 잘 따라갑니다`;
 }
 
-function applyWaypoints() {
+function applyWaypoints({ append = false } = {}) {
   if (!S.preview.length) return;
-  S.route.stops = S.preview.map(s => ({ ...s }));
+  const had = S.route.stops.length;
+
+  if (!append && had) {
+    const ok = confirm(
+      `지금 노선의 정류장 ${had}개를 새로 찾은 ${S.preview.length}개로 바꿉니다.\n\n` +
+      `저장된 노선은 그대로 남고, 되돌리기(⌘Z)도 됩니다.\n계속할까요?`);
+    if (!ok) return;
+  }
+
+  snapshot(append ? '거점 이어 붙이기' : '거점으로 교체');
+  S.route.stops = append
+    ? S.route.stops.concat(S.preview.map(s => ({ ...s })))
+    : S.preview.map(s => ({ ...s }));
+
   renderPanel(); drawRoute({ fit: true });
-  toast(`정류장 ${S.preview.length}개를 노선에 넣었습니다`);
+  toast(append
+    ? `정류장 ${S.preview.length}개를 뒤에 이어 붙였습니다 (⌘Z로 되돌리기)`
+    : `정류장 ${S.preview.length}개로 바꿨습니다 (⌘Z로 되돌리기)`, 3200);
   setComposing(false);
 }
 
@@ -507,11 +565,13 @@ function loadRoute(id) {
   if (!id) { newBlankRoute(); return; }
   const r = S.store.routes.find(x => x.id === id);
   if (!r) return;
+  snapshot('다른 노선 불러오기');
   S.route = { id: r.id, name: r.name, region: r.region, stops: r.stops.map(s => ({ ...s })) };
   renderPanel(); drawRoute({ fit: true }); refreshRouteSelect();
 }
 
 function newBlankRoute() {
+  if (S.route.stops.length) snapshot('새 노선 시작');
   S.route = { id: null, name: '새 노선', region: S.region || null, stops: [] };
   renderPanel(); drawRoute(); refreshRouteSelect();
 }
@@ -711,7 +771,15 @@ function bindUI() {
   });
 
   $('gap').addEventListener('input', applyGap);
-  $('btn-wp-apply').addEventListener('click', applyWaypoints);
+  $('btn-wp-apply').addEventListener('click', () => applyWaypoints({ append: false }));
+  $('btn-wp-append').addEventListener('click', () => applyWaypoints({ append: true }));
+  $('tool-undo').addEventListener('click', undo);
+  addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' &&
+        !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+      e.preventDefault(); undo();
+    }
+  });
   $('btn-wp-clear').addEventListener('click', clearWaypoints);
   $('btn-wp-undo').addEventListener('click', () => {
     S.waypoints.pop(); drawWaypoints(); recomputePreview();

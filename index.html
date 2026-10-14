@@ -44,6 +44,7 @@
       <option value="">새 노선</option>
     </select>
     <input class="route-name" id="route-name" value="새 노선" placeholder="노선 이름">
+    <div class="dirty" id="dirty" hidden>● 편집 중 — 저장된 노선은 그대로입니다</div>
     <div class="stats">
       <div class="stat"><div class="v" id="stat-km">0<small>km</small></div><div class="k">총 거리</div></div>
       <div class="stat"><div class="v" id="stat-n">0</div><div class="k">정류장</div></div>
@@ -74,6 +75,7 @@
   <div class="compose-actions">
     <button class="btn ghost" id="btn-wp-undo">되돌리기</button>
     <button class="btn ghost" id="btn-wp-clear">거점 지우기</button>
+    <button class="btn ghost" id="btn-wp-append" disabled hidden>뒤에 이어 붙이기</button>
     <button class="btn" id="btn-wp-apply" disabled>이대로 확정</button>
   </div>
 </div>
@@ -81,6 +83,7 @@
 <!-- 하단 툴바 -->
 <div class="toolbar">
   <button class="tool" id="tool-compose">✛ 거점 찍기</button>
+  <button class="tool" id="tool-undo">↩ 실행 취소</button>
   <button class="tool" id="tool-new">+ 새 노선</button>
   <button class="tool" id="tool-import">📂 불러오기</button>
   <button class="tool" id="tool-print">⎙ 인쇄</button>

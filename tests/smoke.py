@@ -131,15 +131,15 @@ def main():
 
     print('\n== 거점 자동 채우기 ==')
     p.ev("document.getElementById('tool-compose').click()")
-    p.ev("""
+    p.ev("""(() => {
       const wp = [[37.56675,126.89618],[37.54958,126.91383],[37.53817,126.90060],
                   [37.53195,126.90960],[37.52953,126.92789]];
       for (const [lat,lng] of wp) {
         const ll = new maplibregl.LngLat(lng, lat);
         __app.map.fire('click', { lngLat: ll, point: __app.map.project(ll), originalEvent: new MouseEvent('click') });
       }
-      'fired';
-    """)
+      return 'fired';
+    })()""")
     time.sleep(3)
     n_preview = p.ev('__app.preview.length')
     check('거점 5개 등록', p.ev('__app.waypoints.length') == 5)
@@ -192,6 +192,70 @@ def main():
     time.sleep(3)
     check('풀코스 190개 로드', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
     check('지도에 노선 그려짐', (p.ev("__app.map.getSource('route')._data.features.length") or 0) == 191)
+
+    print('\n== 실수 복구 (되돌리기 / 이어붙이기) ==')
+    # 거점을 찍어 자동 채우기 -> 기존 190개에 "이어 붙이기"
+    p.ev("document.getElementById('tool-compose').click()")
+    p.ev("""(() => {
+      const wp = [[37.56675,126.89618],[37.54958,126.91383],[37.52953,126.92789]];
+      for (const [lat,lng] of wp) {
+        const ll = new maplibregl.LngLat(lng, lat);
+        __app.map.fire('click', { lngLat: ll, point: __app.map.project(ll), originalEvent: new MouseEvent('click') });
+      }
+      return wp.length;
+    })()""")
+    time.sleep(3)
+    added = p.ev('__app.preview.length') or 0
+    check('이어붙이기 버튼 노출', p.ev("!document.getElementById('btn-wp-append').hidden"))
+    check('교체 버튼 문구가 경고성으로 바뀜',
+          p.ev("document.getElementById('btn-wp-apply').textContent") == '기존 노선 교체',
+          p.ev("document.getElementById('btn-wp-apply').textContent"))
+    p.ev("document.getElementById('btn-wp-append').click()")
+    time.sleep(2)
+    check('이어붙이면 기존 정류장이 유지됨', p.ev('__app.route.stops.length') == 190 + added,
+          f'{p.ev("__app.route.stops.length")} (190+{added})')
+    check('편집 중 표시 노출', p.ev("!document.getElementById('dirty').hidden"))
+
+    # 되돌리기
+    p.ev("document.getElementById('tool-undo').click()")
+    time.sleep(2)
+    check('되돌리기로 190개 복원', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
+
+    # 거점 교체 후 되돌리기 (가장 위험한 동작)
+    p.ev("document.getElementById('tool-compose').click()")
+    p.ev("""(() => {
+      const wp = [[37.56675,126.89618],[37.52953,126.92789]];
+      for (const [lat,lng] of wp) {
+        const ll = new maplibregl.LngLat(lng, lat);
+        __app.map.fire('click', { lngLat: ll, point: __app.map.project(ll), originalEvent: new MouseEvent('click') });
+      }
+      return wp.length;
+    })()""")
+    time.sleep(3)
+    p.ev("document.getElementById('btn-wp-apply').click()")   # confirm은 자동 수락
+    time.sleep(2)
+    replaced = p.ev('__app.route.stops.length') or 0
+    check('교체되면 정류장이 줄어듦', 0 < replaced < 190, f'{replaced}개')
+    check('교체해도 저장본은 그대로',
+          p.ev("JSON.parse(localStorage.getItem('marathon-routes')).routes"
+               ".find(r => r.name === '풀코스').stops.length") == 190)
+    # 합성 이벤트를 두 번 쏘면 두 단계가 되돌려진다. 실제 키 입력으로 한 번만 보낸다.
+    p.ev("document.body.focus()")
+    for phase in ('rawKeyDown', 'keyUp'):
+        p.send('Input.dispatchKeyEvent', {'type': phase, 'key': 'z', 'code': 'KeyZ',
+                                          'windowsVirtualKeyCode': 90, 'nativeVirtualKeyCode': 90,
+                                          'modifiers': 4})
+    time.sleep(2)
+    check('⌘Z로 190개 복원', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
+    p.ev("document.getElementById('route-name').focus()")
+    for phase in ('rawKeyDown', 'keyUp'):
+        p.send('Input.dispatchKeyEvent', {'type': phase, 'key': 'z', 'code': 'KeyZ',
+                                          'windowsVirtualKeyCode': 90, 'nativeVirtualKeyCode': 90,
+                                          'modifiers': 4})
+    time.sleep(1)
+    check('입력창에서는 ⌘Z가 노선을 건드리지 않음', p.ev('__app.route.stops.length') == 190,
+          p.ev('__app.route.stops.length'))
+    p.ev("document.getElementById('route-name').blur()")
 
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}.png')
     before = p.ev("document.documentElement.dataset.theme")
