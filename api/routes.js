@@ -7,13 +7,19 @@ import { put, head } from '@vercel/blob';
 const KEY = 'routes.json';
 const EMPTY = { routes: [], version: 0 };
 
+/**
+ * Blob 공개 URL은 CDN에 캐시되어 쓰기 직후 약 10초간 옛 내용을 준다.
+ * - 판 번호는 메타데이터(uploadedAt)에서 읽는다. 이쪽은 바로 갱신된다.
+ * - 본문은 그 시각을 쿼리로 붙여 캐시 키를 바꿔서 받는다.
+ */
 async function readStore() {
   try {
-    const meta = await head(KEY);          // 공개 저장소라 URL로 바로 읽는다
-    const res = await fetch(meta.url, { cache: 'no-store' });
-    if (!res.ok) return EMPTY;
+    const meta = await head(KEY);
+    const version = new Date(meta.uploadedAt).getTime();
+    const res = await fetch(`${meta.url}?v=${version}`, { cache: 'no-store' });
+    if (!res.ok) return { ...EMPTY, version };
     const data = await res.json();
-    return { routes: data.routes || [], version: data.version || 0 };
+    return { routes: data.routes || [], version };
   } catch {
     return EMPTY;                           // 아직 한 번도 저장한 적 없음
   }
@@ -54,7 +60,8 @@ export default async function handler(req, res) {
   }
 
   const current = await readStore();
-  if (body.baseVersion !== undefined && body.baseVersion !== current.version) {
+  // 캐시 지연으로 옛 판이 보일 수 있으므로, "서버가 더 새로울 때"만 충돌로 본다
+  if (body.baseVersion !== undefined && current.version > body.baseVersion) {
     return res.status(409).json({
       error: 'version_conflict',
       message: '다른 기기에서 먼저 저장했습니다. 새로고침 후 다시 시도하세요',
@@ -62,8 +69,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const next = { routes: body.routes, version: Date.now() };
-  await put(KEY, JSON.stringify(next), {
+  const blob = await put(KEY, JSON.stringify({ routes: body.routes }), {
     access: 'public',
     contentType: 'application/json',
     addRandomSuffix: false,
@@ -71,5 +77,9 @@ export default async function handler(req, res) {
     cacheControlMaxAge: 0,
   });
 
-  return res.status(200).json({ ok: true, version: next.version, count: next.routes.length });
+  // 판 번호는 저장 시각을 그대로 쓴다 (읽을 때와 같은 출처)
+  const meta = await head(KEY).catch(() => null);
+  const version = meta ? new Date(meta.uploadedAt).getTime() : Date.now();
+
+  return res.status(200).json({ ok: true, version, count: body.routes.length, url: blob.url });
 }
