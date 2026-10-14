@@ -140,15 +140,21 @@ button { cursor: pointer; }
   transition: transform .26s cubic-bezier(.32, .72, 0, 1);
 }
 
-/* 지도만 보고 싶을 때 패널을 오른쪽으로 치운다 */
+/* 지도만 보고 싶을 때 패널을 오른쪽으로 치운다.
+   패널 왼쪽 면에 붙은 탭처럼 보이도록 간격 없이 맞댄다. */
 .panel-toggle {
-  position: absolute; top: 50%; right: 392px; transform: translateY(-50%); z-index: 12;
-  width: 22px; height: 56px; padding: 0; border: 1px solid var(--border); border-right: 0;
-  border-radius: 9px 0 0 9px; background: var(--canvas); color: var(--muted);
-  font-size: 15px; line-height: 1; box-shadow: var(--shadow);
-  transition: right .26s cubic-bezier(.32, .72, 0, 1);
+  position: absolute; z-index: 10;
+  right: 376px;                                   /* 패널(오른쪽 16 + 너비 360) 바로 옆 */
+  top: calc(80px + (100vh - 96px) / 2); transform: translateY(-50%);
+  width: 20px; height: 64px; padding: 0;
+  border: 1px solid var(--border); border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: var(--canvas); color: var(--muted);
+  font-size: 14px; line-height: 1;
+  box-shadow: -4px 0 14px rgba(0, 0, 0, .06);
+  transition: right .26s cubic-bezier(.32, .72, 0, 1), color .12s;
 }
-.panel-toggle:hover { color: var(--primary); background: var(--surface); }
+.panel-toggle:hover { color: var(--primary); }
 body.panel-collapsed .panel { transform: translateX(calc(100% + 24px)); }
 body.panel-collapsed .panel-toggle { right: 0; }
 .sheet-handle { display: none; }
