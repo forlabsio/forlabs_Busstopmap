@@ -50,6 +50,13 @@ function currentTheme() {
 function applyTheme(mode, { redraw = true } = {}) {
   document.documentElement.dataset.theme = mode;
   localStorage.setItem('route-theme', mode);
+
+  // 버튼은 "누르면 될 상태"를 보여준다
+  const btn = $('theme-btn');
+  if (btn) {
+    btn.textContent = mode === 'dark' ? '☀' : '☾';
+    btn.title = mode === 'dark' ? '밝은 테마로 전환' : '어두운 테마로 전환';
+  }
   if (redraw && S.map) {
     S.map.setStyle(BASEMAP[mode]);
     S.map.once('styledata', () => { installLayers(); drawRoute(); drawPreview(); });

@@ -8,7 +8,7 @@
 import base64, json, os, shutil, subprocess, sys, time, urllib.request
 import websocket
 
-URL = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 'http://127.0.0.1:8765/index-v2.html'
+URL = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 'http://127.0.0.1:8765/index.html'
 MOBILE = '--mobile' in sys.argv
 SIZE = '390,844' if MOBILE else '1440,900'
 TMP = '/private/tmp/claude-501/-Users-heesangchae/8be8e20b-32cd-4960-a784-8ea0df17f58f/scratchpad'
@@ -21,28 +21,35 @@ class Page:
         shutil.rmtree(profile, ignore_errors=True)
         subprocess.run(['pkill', '-f', 'remote-debugging-port=9444'], capture_output=True)
         time.sleep(1)
+        # about:blank으로 띄운 뒤 직접 이동한다. URL을 인자로 주면 다른 탭에 붙는 일이 생긴다.
         self.proc = subprocess.Popen([
             CHROME, '--headless=new', '--hide-scrollbars', '--enable-unsafe-swiftshader',
             '--use-gl=angle', '--use-angle=swiftshader', f'--window-size={size}',
             '--remote-debugging-port=9444', '--remote-allow-origins=*',
-            f'--user-data-dir={profile}', url,
+            '--no-first-run', '--no-default-browser-check',
+            f'--user-data-dir={profile}', 'about:blank',
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ws_url = None
-        for _ in range(60):
+        for _ in range(80):
             try:
-                for t in json.load(urllib.request.urlopen('http://127.0.0.1:9444/json')):
-                    if t.get('type') == 'page' and 'http' in t.get('url', ''):
-                        ws_url = t['webSocketDebuggerUrl']
-                if ws_url:
+                targets = json.load(urllib.request.urlopen('http://127.0.0.1:9444/json'))
+                pages = [t for t in targets if t.get('type') == 'page']
+                if pages:
+                    ws_url = pages[0]['webSocketDebuggerUrl']
                     break
             except Exception:
                 pass
             time.sleep(0.5)
+        if not ws_url:
+            raise RuntimeError('헤드리스 Chrome 페이지 타깃을 찾지 못했습니다')
         self.ws = websocket.create_connection(ws_url, timeout=120)
         self.mid = 0
         self.errors = []
+        self.eval_errors = []
         self.send('Runtime.enable')
         self.send('Page.enable')
+        self.send('Page.navigate', {'url': url})
+        time.sleep(1)
 
     def send(self, method, params=None):
         self.mid += 1
@@ -61,8 +68,31 @@ class Page:
         r = self.send('Runtime.evaluate',
                       {'expression': expr, 'returnByValue': True, 'awaitPromise': True})
         if 'exceptionDetails' in r:
-            return 'ERROR: ' + json.dumps(r['exceptionDetails'].get('exception', {}).get('description', ''))[:200]
+            desc = (r['exceptionDetails'].get('exception') or {}).get('description', '')
+            self.eval_errors.append(desc[:200])
+            return None
         return r.get('result', {}).get('value')
+
+    def wait_for(self, expr, timeout=60, label=''):
+        """앱이 준비될 때까지 기다린다. 고정 sleep은 느린 날 깨진다."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.ev(expr):
+                return True
+            time.sleep(0.5)
+        print(f'  (대기 시간 초과: {label or expr})')
+        print('    현재 URL:', self.ev('location.href'),
+              '| readyState:', self.ev('document.readyState'),
+              '| 로딩 메시지:', self.ev("(document.getElementById('loading-msg')||{}).textContent"))
+        return False
+
+    def ready(self, timeout=60):
+        self.eval_errors.clear()
+        if not self.wait_for("!!document.getElementById('route-select')", 15, '앱 마크업'):
+            print('    페이지가 앱이 아닙니다. URL을 확인하세요:', self.ev('location.href'))
+            return False
+        return self.wait_for('!!(window.__app && __app.map && __app.map.loaded() && __app.stops.length)',
+                             timeout, '앱 초기화')
 
     def shot(self, path):
         r = self.send('Page.captureScreenshot', {'format': 'png'})
@@ -83,9 +113,11 @@ def main():
     p = Page(URL, SIZE, PROF)
     # confirm 창을 자동 수락하고 alert은 삼킨다
     p.ev("window.confirm = () => true; window.__alerts = []; window.alert = m => window.__alerts.push(m);")
-    time.sleep(16)
+    started = time.time()
+    booted = p.ready()
 
     print(f'\n== 로딩 ({"모바일" if MOBILE else "데스크톱"}) ==')
+    check('앱 초기화 완료', booted, f'{time.time() - started:.1f}초')
     check('정류장 데이터 64,347개', p.ev('__app.stops.length') == 64347, p.ev('__app.stops.length'))
     check('지도 로드 완료', p.ev('!!(window.__app && __app.map && __app.map.loaded())'))
     check('로딩 오버레이 사라짐', p.ev("document.getElementById('loading').classList.contains('hidden')"))
@@ -149,7 +181,8 @@ def main():
     backup = open('backups/marathon-routes-latest.json', encoding='utf-8').read()
     p.ev(f"localStorage.setItem('marathon-routes', {json.dumps(backup)}); 'set'")
     p.ev('location.reload()')
-    time.sleep(16)
+    time.sleep(2)
+    p.ready()
     p.ev("window.confirm = () => true; window.alert = () => {};")
     names = p.ev("Array.from(document.getElementById('route-select').options).map(o=>o.textContent).join(' | ')")
     check('기존 노선 2개 드롭다운 노출', '풀코스' in (names or ''), names)
@@ -167,10 +200,14 @@ def main():
     after = p.ev("document.documentElement.dataset.theme")
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}-{after}.png')
     check('테마 토글', before != after and after in ('light', 'dark'), f'{before} -> {after}')
+    check('테마 버튼이 전환될 상태를 표시', p.ev("document.getElementById('theme-btn').textContent")
+          == ('☀' if after == 'dark' else '☾'),
+          p.ev("document.getElementById('theme-btn').textContent + ' / ' "
+               "+ document.getElementById('theme-btn').title"))
     check('테마 전환 후 노선 유지', p.ev('__app.route.stops.length') == 190,
           p.ev('__app.route.stops.length'))
 
-    real_errors = [e for e in p.errors if e and 'favicon' not in str(e)]
+    real_errors = [e for e in p.errors + p.eval_errors if e and 'favicon' not in str(e)]
     check('JS 예외 없음', not real_errors, real_errors[:2])
     p.close()
 
