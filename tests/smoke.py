@@ -376,6 +376,39 @@ def main():
       const r = JSON.parse(localStorage.getItem('marathon-routes')).routes.find(r => r.id === __app.route.id);
       return r && r.color === __app.route.color;
     })()"""))
+    check('색을 바꾸면 결과를 알려줌',
+          '색을' in (p.ev("document.getElementById('toast').textContent") or ''),
+          p.ev("document.getElementById('toast').textContent"))
+    check('드롭다운 색 점도 함께 바뀜', p.ev("""(() => {
+      document.querySelector('#route-picker .select-trigger').click();
+      const opt = Array.from(document.querySelectorAll('#route-picker .select-option'))
+        .find(o => o.getAttribute('aria-selected') === 'true');
+      const dot = opt && opt.querySelector('.opt-dot');
+      const bg = dot ? dot.style.background : '';
+      document.querySelector('#route-picker .select-trigger').click();
+      const hex = __app.route.color.replace('#','');
+      const rgb = 'rgb(' + [0,2,4].map(i => parseInt(hex.slice(i,i+2),16)).join(', ') + ')';
+      return bg === rgb || bg === __app.route.color;
+    })()"""))
+
+    # 저장 전 노선에서 색을 바꾸면 안내가 나와야 한다
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-new').click()")
+    time.sleep(1)
+    p.ev("document.getElementById('color-btn').click()")
+    time.sleep(0.4)
+    p.ev("""(() => {
+      const b = Array.from(document.querySelectorAll('#palette [data-color]'))
+        .find(b => b.dataset.color !== __app.route.color);
+      b.click();
+    })()""")
+    time.sleep(1)
+    check('저장 전 노선은 저장 안내를 보여줌',
+          '노선 저장' in (p.ev("document.getElementById('toast').textContent") or ''),
+          p.ev("document.getElementById('toast').textContent"))
+    p.ev("document.getElementById('tool-undo').click()")
+    time.sleep(1)
 
     print('\n== 제목으로 이름 변경 ==')
     p.ev("""(() => {

@@ -1436,18 +1436,27 @@ function bindPalette() {
 
   syncPalette();
 
-  box.addEventListener('click', e => {
+  box.addEventListener('click', async e => {
     const btn = e.target.closest('[data-color]');
     if (!btn) return;
+
     S.route.color = btn.dataset.color;
-    if (S.route.id) {                       // 저장된 노선이면 색을 바로 저장한다
-      setRouteColor(S.store, S.route.id, S.route.color);
-      persist();
-      if (S.overlay) renderRoutesList();
-    }
     repaintRoute();
     syncPalette();
     box.hidden = true;
+
+    if (!S.route.id) {
+      // 아직 저장 전인 노선. 색만 따로 보관할 곳이 없다.
+      renderPanel();
+      return toast('색을 바꿨습니다 — "노선 저장"을 눌러야 남습니다', 4000);
+    }
+
+    setRouteColor(S.store, S.route.id, S.route.color);
+    const ok = await persist({ silent: true });
+    refreshRouteSelect();                   // 드롭다운 색 점도 함께 갱신
+    if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
+    renderPanel();
+    toast(ok ? '색을 저장했습니다' : '색을 바꿨지만 서버에 저장하지 못했습니다', ok ? 2000 : 4500);
   });
 }
 
