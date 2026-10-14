@@ -158,6 +158,24 @@ def main():
     check('총거리 표시', 'km' in (p.ev("document.getElementById('stat-km').textContent") or ''),
           p.ev("document.getElementById('stat-km').textContent"))
 
+    print('\n== 지도 순번 ==')
+    check('순번 레이어 존재', p.ev("!!__app.map.getLayer('route-numbers')"))
+    check('노선 점에 순번 속성', p.ev("""(() => {
+      const pts = __app.map.getSource('route')._data.features.filter(f => f.geometry.type === 'Point');
+      return pts.every((f, i) => f.properties.n === i + 1);
+    })()"""))
+    check('첫/마지막만 edge 표시', p.ev("""(() => {
+      const pts = __app.map.getSource('route')._data.features.filter(f => f.geometry.type === 'Point');
+      return pts[0].properties.edge === true && pts.at(-1).properties.edge === true
+          && pts.slice(1, -1).every(f => f.properties.edge === false);
+    })()"""))
+    check('목록 번호가 지도와 같은 1..N',
+          p.ev("Array.from(document.querySelectorAll('#list .num')).map(e => e.textContent).join(',')")
+          == ','.join(str(i + 1) for i in range(n_route or 0)))
+    check('출발/골인 꼬리표 표시',
+          p.ev("Array.from(document.querySelectorAll('#list .edge-tag')).map(e => e.textContent).join('/')")
+          == '출발/골인')
+
     print('\n== 저장 / 내보내기 ==')
     p.ev("document.getElementById('route-name').value='스모크 코스'; "
          "document.getElementById('route-name').dispatchEvent(new Event('input'))")

@@ -350,3 +350,8 @@ body.viewer .viewer-badge { display: inline-flex; }
 
 /* 뷰어 모드에서는 노선 선택을 감춘다 */
 body.viewer #route-picker { display: none !important; }
+
+.edge-tag {
+  flex: 0 0 auto; padding: 1px 7px; border-radius: var(--r-chip);
+  background: var(--tint); color: var(--tint-fg); font-size: 10px; font-weight: 700;
+}

@@ -322,8 +322,28 @@ function installLayers() {
     id: 'route-dots', type: 'circle', source: 'route',
     filter: ['==', ['geometry-type'], 'Point'],
     paint: {
-      'circle-radius': 5, 'circle-color': c('--canvas'),
-      'circle-stroke-width': 3, 'circle-stroke-color': c('--primary'),
+      // 순번이 들어가야 하므로 확대할수록 원을 키운다
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.5, 13, 7, 16, 11],
+      'circle-color': ['case', ['get', 'edge'], c('--primary'), c('--canvas')],
+      'circle-stroke-width': 2.5, 'circle-stroke-color': c('--primary'),
+    },
+  });
+  S.map.addLayer({
+    id: 'route-numbers', type: 'symbol', source: 'route', minzoom: 11.5,
+    filter: ['==', ['geometry-type'], 'Point'],
+    layout: {
+      'text-field': ['to-string', ['get', 'n']],
+      'text-font': ['Open Sans Bold'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8.5, 14, 10, 16, 12],
+      // 멀리서는 겹치면 숨기고, 작업하려고 확대하면 모두 보여준다
+      'text-allow-overlap': ['step', ['zoom'], false, 14.5, true],
+      'text-ignore-placement': ['step', ['zoom'], false, 14.5, true],
+      'text-padding': 1,
+    },
+    paint: {
+      'text-color': ['case', ['get', 'edge'], c('--on-primary'), c('--primary')],
+      'text-halo-color': ['case', ['get', 'edge'], c('--primary'), c('--canvas')],
+      'text-halo-width': 1,
     },
   });
 }
@@ -380,8 +400,9 @@ function routeFC(stops) {
       geometry: { type: 'LineString', coordinates: stops.map(s => [s.lng, s.lat]) },
     });
   }
-  stops.forEach(s => fc.features.push({
-    type: 'Feature', properties: { id: s.id },
+  stops.forEach((s, i) => fc.features.push({
+    type: 'Feature',
+    properties: { id: s.id, n: i + 1, edge: i === 0 || i === stops.length - 1 },
     geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
   }));
   return fc;
@@ -448,13 +469,15 @@ function renderPanel() {
   }
 
   list.innerHTML = stops.map((s, i) => {
-    const edge = i === 0 || i === stops.length - 1 ? ' edge' : '';
-    const badge = i === 0 ? '출' : (i === stops.length - 1 ? '골' : i + 1);
+    const isFirst = i === 0, isLast = i === stops.length - 1;
+    const edge = isFirst || isLast ? ' edge' : '';
+    const tag = isFirst ? '<span class="edge-tag">출발</span>'
+              : (isLast && stops.length > 1 ? '<span class="edge-tag">골인</span>' : '');
     const pinned = S.insertAfter === i ? ' insert-target' : '';
     return `<div class="item${edge}${pinned}" draggable="${!S.viewer}" data-i="${i}">
       ${S.viewer ? '' : '<span class="grip">⠿</span>'}
-      <span class="num">${badge}</span>
-      <span class="nm" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
+      <span class="num">${i + 1}</span>
+      <span class="nm" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>${tag}
       <span class="seg">${fmtKm(cum[i])}km</span>
       ${S.viewer ? '' : `<button class="ins" data-ins="${i}" title="이 뒤에 정류장 넣기">⊕</button>
       <button class="x" data-del="${i}" title="제거">✕</button>`}
