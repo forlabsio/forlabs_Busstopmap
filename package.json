@@ -5,5 +5,8 @@
   "scripts": {
     "test": "node --test tests/",
     "build": "python3 build.py"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.8.1"
   }
 }

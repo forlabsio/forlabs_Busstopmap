@@ -71,6 +71,7 @@
               title="마지막 편집을 되돌립니다 (⌘Z)">↩ 실행 취소</button>
     </div>
     <div class="dirty" id="dirty" hidden>● 편집 중 — 저장된 노선은 그대로입니다</div>
+    <div class="sync-state" id="sync-state" hidden></div>
   </div>
 
   <!-- 평소: 정류장 목록 -->
@@ -140,6 +141,10 @@
   <button role="menuitem" id="tool-import">
     <svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 19h16"/></svg>
     <span>가져오기</span>
+  </button>
+  <button role="menuitem" id="tool-editkey">
+    <svg viewBox="0 0 24 24"><path d="M15 7a4 4 0 11-3.8 5.2L7 16.4 5 18l-2-2 1.6-2 4.2-4.2A4 4 0 0115 7z"/></svg>
+    <span>편집 권한</span>
   </button>
   <button role="menuitem" id="tool-import-published">
     <svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M12 11v4M10 13l2 2 2-2"/></svg>

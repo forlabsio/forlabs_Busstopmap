@@ -6,6 +6,7 @@ import {
   loadFromBrowser, saveToBrowser, STORAGE_KEY,
   ROUTE_COLORS, colorOf, nextColor, renameRoute, setRouteColor,
 } from './store.js';
+import { getEditKey, setEditKey, checkEditKey, fetchRoutes, saveRoutes } from './sync.js';
 
 const BASEMAP = {
   light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
@@ -28,6 +29,9 @@ const S = {
   wpMarkers: [],
   edgeMarkers: [],
   pickers: {},
+  serverVersion: 0,        // 서버에 저장된 판 번호 (동시 수정 감지용)
+  online: false,           // 서버에서 읽어왔는가
+  editKey: '',             // 편집 권한 키
   dataReady: null,         // 정류장 데이터 로딩 Promise
   overlay: false,          // 전체 노선 보기
   overlayHidden: new Set(), // 전체 보기에서 꺼둔 노선 id
@@ -837,6 +841,102 @@ function applyWaypoints({ append = false } = {}) {
   setComposing(false);
 }
 
+/* ───────────────────────── 서버 동기화 ───────────────────────── */
+
+function setSyncState(text, tone = '') {
+  const el = $('sync-state');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'sync-state' + (tone ? ' ' + tone : '');
+  el.hidden = !text;
+}
+
+function describeSync() {
+  if (!S.online) return setSyncState('오프라인 — 이 기기에만 저장됩니다', 'warn');
+  if (!S.editKey) return setSyncState('읽기 전용 — 편집하려면 ⋯ 에서 편집 권한을 넣으세요');
+  setSyncState('서버와 동기화됨', 'ok');
+}
+
+/** 서버에서 노선을 읽어온다. 실패하면 이 기기 사본을 쓴다. */
+async function loadStoreFromServer() {
+  const remote = await fetchRoutes();
+  if (remote) {
+    S.online = true;
+    S.serverVersion = remote.version;
+    S.store = { routes: remote.routes };
+    saveToBrowser(S.store);                      // 오프라인 대비 사본
+  } else {
+    S.online = false;
+    S.store = loadFromBrowser();
+  }
+  describeSync();
+  refreshRouteSelect();
+}
+
+/** 노선을 저장한다. 사본은 항상 남기고, 권한이 있으면 서버에도 쓴다. */
+async function persist({ silent = false } = {}) {
+  try {
+    saveToBrowser(S.store);
+  } catch {
+    toast('저장 공간이 부족합니다');
+  }
+
+  if (!S.online) {
+    if (!silent) toast('서버에 연결할 수 없어 이 기기에만 저장했습니다', 3500);
+    return false;
+  }
+  if (!S.editKey) {
+    if (!silent) toast('편집 권한이 필요합니다 — ⋯ 에서 편집 권한을 넣으세요', 4000);
+    return false;
+  }
+
+  const res = await saveRoutes(S.store.routes, S.serverVersion, S.editKey);
+  if (res.ok) {
+    S.serverVersion = res.version;
+    describeSync();
+    return true;
+  }
+  if (res.reason === 'conflict') {
+    toast('다른 기기에서 먼저 저장했습니다. 새로고침 후 다시 저장하세요', 6000);
+    setSyncState('다른 기기의 변경이 있습니다 — 새로고침 필요', 'warn');
+  } else if (res.reason === 'auth') {
+    toast('편집 키가 올바르지 않습니다', 4000);
+  } else {
+    toast('서버 저장에 실패했습니다. 이 기기에는 남아 있습니다', 4000);
+  }
+  return false;
+}
+
+async function askEditKey() {
+  const current = S.editKey;
+  const input = prompt('편집 권한 키를 넣으세요 (비우면 읽기 전용)', current);
+  if (input === null) return;
+  const key = input.trim();
+
+  if (!key) {
+    setEditKey(''); S.editKey = '';
+    describeSync();
+    return toast('읽기 전용으로 바꿨습니다');
+  }
+
+  const valid = await checkEditKey(key);
+  if (!valid) return toast('키가 맞지 않습니다', 4000);
+
+  setEditKey(key); S.editKey = key;
+  describeSync();
+  toast('편집 권한이 켜졌습니다');
+
+  // 서버가 비어 있고 이 기기에만 노선이 있으면 올려준다
+  const local = loadFromBrowser();
+  if (!S.store.routes.length && local.routes.length) {
+    S.store = local;
+    if (await persist({ silent: true })) {
+      refreshRouteSelect();
+      toast(`이 기기의 노선 ${local.routes.length}개를 서버에 올렸습니다`, 4000);
+    }
+  }
+}
+
 /* ───────────────────────── 저장 / 불러오기 ───────────────────────── */
 
 function refreshRouteSelect() {
@@ -879,11 +979,7 @@ function saveRoute() {
         color: currentColor() }
     : newRoute(name, S.region || null, S.route.stops, currentColor());
   upsertRoute(S.store, route);
-  try {
-    saveToBrowser(S.store);
-  } catch {
-    return toast('저장 공간이 부족합니다. 노선을 내보낸 뒤 일부를 지워주세요');
-  }
+  persist();
   S.route.id = route.id; S.route.name = name;
   refreshRouteSelect(); renderPanel();
   if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
@@ -899,7 +995,7 @@ function deleteRoute() {
     `되돌릴 수 없습니다. 필요하면 먼저 "내보내기"로 백업하세요.`);
   if (!ok) return;
   removeRoute(S.store, S.route.id);
-  saveToBrowser(S.store);
+  persist();
   newBlankRoute();
   toast('저장된 노선을 삭제했습니다');
 }
@@ -964,11 +1060,7 @@ async function importPublished() {
 
   if (!added && !updated) return toast('가져올 노선이 없습니다');
 
-  try {
-    saveToBrowser(S.store);
-  } catch {
-    return toast('저장 공간이 부족합니다');
-  }
+  await persist();
   refreshRouteSelect();
   if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
   toast(`발행본에서 ${added}개 추가, ${updated}개 갱신했습니다`, 4000);
@@ -986,7 +1078,7 @@ function importRoutes(file) {
       upsertRoute(S.store, r);
       exists ? updated++ : added++;
     });
-    saveToBrowser(S.store);
+    persist();
     refreshRouteSelect();
     toast(`${added}개 추가, ${updated}개 갱신되었습니다`);
   };
@@ -1104,7 +1196,7 @@ function copyToMine() {
   const name = uniqueName(S.store, S.route.name || '공유받은 노선');
   const route = newRoute(name, null, S.route.stops);
   upsertRoute(S.store, route);
-  saveToBrowser(S.store);
+  persist();
   toast(`"${name}"을 내 노선으로 저장했습니다. 편집하려면 주소에서 ?r=... 을 지우세요`, 4000);
 }
 
@@ -1164,7 +1256,7 @@ function endRename({ commit = true } = {}) {
         const applied = renameRoute(S.store, S.route.id, name);
         if (applied) {
           S.route.name = applied;
-          saveToBrowser(S.store);
+          persist();
           refreshRouteSelect();
           if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
           toast(`이름을 "${applied}"로 바꿨습니다`);
@@ -1309,7 +1401,7 @@ function bindRoutesList() {
       if (name === null) return;
       const applied = renameRoute(S.store, id, name);
       if (!applied) return toast('이름을 입력해주세요');
-      saveToBrowser(S.store);
+      persist();
       if (S.route.id === id) { S.route.name = applied; renderPanel(); }
       refreshRouteSelect(); renderRoutesList(); drawAllRoutes();
       toast(`이름을 "${applied}"로 바꿨습니다`);
@@ -1339,7 +1431,7 @@ function bindPalette() {
     S.route.color = btn.dataset.color;
     if (S.route.id) {                       // 저장된 노선이면 색을 바로 저장한다
       setRouteColor(S.store, S.route.id, S.route.color);
-      saveToBrowser(S.store);
+      persist();
       if (S.overlay) renderRoutesList();
     }
     repaintRoute();
@@ -1470,6 +1562,7 @@ function bindUI() {
   $('tool-print').addEventListener('click', printRoute);
   $('tool-import').addEventListener('click', () => $('import-file').click());
   $('tool-import-published').addEventListener('click', importPublished);
+  $('tool-editkey').addEventListener('click', askEditKey);
   $('import-file').addEventListener('change', e => {
     if (e.target.files[0]) importRoutes(e.target.files[0]);
     e.target.value = '';
@@ -1543,7 +1636,8 @@ async function main() {
     placeholder: '새 노선',
     onChange: id => loadRoute(id),
   });
-  S.store = loadFromBrowser();
+  S.editKey = getEditKey();
+  S.store = loadFromBrowser();          // 서버 응답 전까지 사본으로 먼저 보여준다
 
   // 지도를 먼저 띄우고, 6만 개 정류장은 뒤이어 받는다.
   // 데이터를 기다렸다가 지도를 그리면 흰 화면이 몇 초씩 이어진다.
@@ -1555,6 +1649,7 @@ async function main() {
 
   // 공유 링크로 들어왔다면 정류장 6만 개는 필요 없을 수도 있다. 필요할 때 받는다.
   if (!VIEWER_INTENT) ensureStops();
+  if (!VIEWER_INTENT) loadStoreFromServer();
   S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex, setOverlay, fitAllRoutes };
   window.__app = S;   // 스모크 테스트용
 }
