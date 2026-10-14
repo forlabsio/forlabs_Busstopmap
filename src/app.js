@@ -34,6 +34,12 @@ const S = {
   insertAfter: null,      // n번 뒤에 넣기로 지정한 위치 (null이면 자동)
 };
 
+/** 공유 링크로 열렸는가. 이 경우 정류장 6만 개를 지도에 올릴 필요가 없다. */
+const VIEWER_INTENT = (() => {
+  const q = new URLSearchParams(location.search);
+  return q.has('r') || q.has('w');
+})();
+
 const $ = id => document.getElementById(id);
 const fmtKm = km => (km < 10 ? km.toFixed(2) : km.toFixed(1));
 
@@ -236,8 +242,6 @@ async function loadStops() {
   S.stops = rows.map(([id, name, lat, lng, city]) => ({ id, name, lat, lng, city }));
   S.byId = new Map(S.stops.map(s => [s.id, s]));
 
-  if (S.map && S.map.getSource('stops')) S.map.getSource('stops').setData(stopsFeatureCollection());
-
   const counts = new Map();
   S.stops.forEach(s => counts.set(s.city, (counts.get(s.city) || 0) + 1));
   const regions = [...counts.keys()].sort();
@@ -246,6 +250,14 @@ async function loadStops() {
     { divider: true },
     ...regions.map(r => ({ value: r, label: r, meta: counts.get(r).toLocaleString() })),
   ]);
+}
+
+/** 6만 개 피처를 만드는 일은 지도가 그려진 뒤 한가할 때 한다 */
+function populateStopLayer() {
+  if (VIEWER_INTENT || !S.map || !S.map.getSource('stops') || !S.stops.length) return;
+  const run = () => S.map.getSource('stops').setData(stopsFeatureCollection());
+  if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2000 });
+  else setTimeout(run, 0);
 }
 
 function stopsFeatureCollection() {
@@ -275,7 +287,8 @@ function installLayers() {
   koreanLabels();
   const c = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
-  // 정류장 (클러스터)
+  // 정류장 (클러스터) — 공유 링크 보기에서는 만들지 않는다
+  if (!VIEWER_INTENT) {
   S.map.addSource('stops', {
     type: 'geojson', data: stopsFeatureCollection(),
     cluster: true, clusterMaxZoom: 13, clusterRadius: 50,
@@ -300,6 +313,7 @@ function installLayers() {
       'circle-color': c('--canvas'), 'circle-stroke-width': 2, 'circle-stroke-color': c('--cluster-bg'),
     },
   });
+  }
 
   // 미리보기 (거점 모드)
   S.map.addSource('preview', { type: 'geojson', data: emptyFC() });
@@ -432,7 +446,7 @@ function initMap() {
     installLayers();
     performance.mark('map-ready');
     $('loading').hidden = true;
-    if (S.stops.length) S.map.getSource('stops').setData(stopsFeatureCollection());
+    populateStopLayer();
 
     S.map.on('click', 'clusters', e => {
       if (S.composing) return;        // 코스 자동 만들기 중에는 확대 대신 지점을 찍는다
@@ -1387,7 +1401,9 @@ async function main() {
     onChange: value => {
       S.region = value;
       $('region-picker').classList.toggle('is-filtered', !!value);
-      if (S.map?.getSource('stops')) S.map.getSource('stops').setData(stopsFeatureCollection());
+      if (!VIEWER_INTENT && S.map?.getSource('stops')) {
+        S.map.getSource('stops').setData(stopsFeatureCollection());
+      }
       if (S.composing) recomputePreview();
     },
   });
@@ -1410,6 +1426,7 @@ async function main() {
     .then(() => {
       showDataPending(false);
       performance.mark('stops-ready');
+      populateStopLayer();
     })
     .catch(err => {
       showDataPending(true, '정류장 데이터를 불러오지 못했습니다');
