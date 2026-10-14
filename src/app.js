@@ -28,6 +28,7 @@ const S = {
   wpMarkers: [],
   edgeMarkers: [],
   pickers: {},
+  dataReady: null,         // 정류장 데이터 로딩 Promise
   overlay: false,          // 전체 노선 보기
   overlayHidden: new Set(), // 전체 보기에서 꺼둔 노선 id
   insertAfter: null,      // n번 뒤에 넣기로 지정한 위치 (null이면 자동)
@@ -235,6 +236,8 @@ async function loadStops() {
   S.stops = rows.map(([id, name, lat, lng, city]) => ({ id, name, lat, lng, city }));
   S.byId = new Map(S.stops.map(s => [s.id, s]));
 
+  if (S.map && S.map.getSource('stops')) S.map.getSource('stops').setData(stopsFeatureCollection());
+
   const counts = new Map();
   S.stops.forEach(s => counts.set(s.city, (counts.get(s.city) || 0) + 1));
   const regions = [...counts.keys()].sort();
@@ -429,6 +432,7 @@ function initMap() {
     installLayers();
     performance.mark('map-ready');
     $('loading').hidden = true;
+    if (S.stops.length) S.map.getSource('stops').setData(stopsFeatureCollection());
 
     S.map.on('click', 'clusters', e => {
       if (S.composing) return;        // 코스 자동 만들기 중에는 확대 대신 지점을 찍는다
@@ -452,7 +456,8 @@ function initMap() {
       S.map.getCanvas().title = e.features[0].properties.name;
     });
 
-    bootRouteFromUrl();
+    // 공유 링크는 정류장 데이터가 있어야 풀 수 있다
+    S.dataReady.then(bootRouteFromUrl).catch(() => {});
   });
 }
 
@@ -1367,6 +1372,13 @@ function bindUI() {
   addEventListener('resize', syncPeekHeight);
 }
 
+function showDataPending(on, msg) {
+  const el = $('data-pending');
+  if (!el) return;
+  el.hidden = !on;
+  if (msg) el.textContent = msg;
+}
+
 async function main() {
   applyTheme(currentTheme(), { redraw: false });
 
@@ -1383,18 +1395,27 @@ async function main() {
     placeholder: '새 노선',
     onChange: id => loadRoute(id),
   });
-  try {
-    await loadStops();
-  } catch (err) {
-    $('loading-msg').textContent = err.message + ' — 로컬 서버로 열었는지 확인해주세요.';
-    return;
-  }
-  $('loading-msg').textContent = '지도를 준비하는 중…';
   S.store = loadFromBrowser();
+
+  // 지도를 먼저 띄우고, 6만 개 정류장은 뒤이어 받는다.
+  // 데이터를 기다렸다가 지도를 그리면 흰 화면이 몇 초씩 이어진다.
+  $('loading-msg').textContent = '지도를 준비하는 중…';
   initMap();
   bindUI();
   refreshRouteSelect();
   renderPanel();
+
+  showDataPending(true, '정류장 불러오는 중…');
+  S.dataReady = loadStops()
+    .then(() => {
+      showDataPending(false);
+      performance.mark('stops-ready');
+    })
+    .catch(err => {
+      showDataPending(true, '정류장 데이터를 불러오지 못했습니다');
+      console.error(err);
+      throw err;
+    });
   S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex, setOverlay, fitAllRoutes };
   window.__app = S;   // 스모크 테스트용
 }

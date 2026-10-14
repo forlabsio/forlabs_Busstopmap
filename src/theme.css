@@ -415,3 +415,10 @@ body.viewer .viewer-badge { display: inline-flex; }
 .route-row .solo:hover { background: var(--surface-2); color: var(--primary); }
 .route-row .solo.on { opacity: 1; background: var(--tint); color: var(--primary); }
 @media (max-width: 767px) { .route-row .solo { opacity: 1; padding: 7px 11px; font-size: 12px; } }
+
+.data-pending {
+  position: absolute; top: 76px; left: 50%; transform: translateX(-50%); z-index: 12;
+  background: var(--canvas); border: 1px solid var(--border); border-radius: var(--r-chip);
+  box-shadow: var(--shadow); padding: 7px 14px; font-size: 12px; font-weight: 600; color: var(--body);
+}
+@media (max-width: 767px) { .data-pending { top: 66px; font-size: 11.5px; } }
