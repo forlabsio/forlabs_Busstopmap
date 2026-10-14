@@ -231,6 +231,7 @@ async function loadStops() {
         if (!r.ok) throw new Error('정류장 데이터를 불러오지 못했습니다 (' + r.status + ')');
         return r.json();
       });
+  performance.mark('stops-loaded');
   S.stops = rows.map(([id, name, lat, lng, city]) => ({ id, name, lat, lng, city }));
   S.byId = new Map(S.stops.map(s => [s.id, s]));
 
@@ -426,6 +427,7 @@ function initMap() {
 
   S.map.on('load', () => {
     installLayers();
+    performance.mark('map-ready');
     $('loading').hidden = true;
 
     S.map.on('click', 'clusters', e => {
