@@ -26,6 +26,28 @@ export function cumulativeDistances(points) {
   return out;
 }
 
+/**
+ * 새 정류장을 어디에 끼울지 고른다.
+ * 각 구간에 넣었을 때 늘어나는 거리를 재고, 맨 앞/맨 뒤에 붙이는 경우까지 같이 비교한다.
+ * 코스 중간에 빠뜨린 정류장은 그 자리에, 코스를 이어 그리는 중이면 맨 뒤에 들어간다.
+ */
+export function bestInsertIndex(stops, stop) {
+  if (stops.length < 2) return stops.length;
+
+  let bestIndex = stops.length;                       // 맨 뒤에 붙이기
+  let bestCost = haversine(stops.at(-1), stop);
+
+  const front = haversine(stop, stops[0]);            // 맨 앞에 붙이기
+  if (front < bestCost) { bestCost = front; bestIndex = 0; }
+
+  for (let i = 0; i < stops.length - 1; i++) {        // 구간 사이에 끼우기
+    const detour = haversine(stops[i], stop) + haversine(stop, stops[i + 1])
+                 - haversine(stops[i], stops[i + 1]);
+    if (detour < bestCost) { bestCost = detour; bestIndex = i + 1; }
+  }
+  return bestIndex;
+}
+
 /** 위경도 -> 미터 평면 */
 function project(p) {
   return [toRad(p.lng) * R * 1000 * Math.cos(toRad(LAT0)), toRad(p.lat) * R * 1000];

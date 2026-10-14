@@ -1,5 +1,5 @@
 // 마라톤 노선 관리 — 앱 로직
-import { haversine, totalDistance, cumulativeDistances, corridorCandidates, thin } from './geo.js';
+import { haversine, totalDistance, cumulativeDistances, corridorCandidates, thin, bestInsertIndex } from './geo.js';
 import { encodeRoute, decodeRoute, resolveIds } from './share.js';
 import {
   parseStore, serializeStore, upsertRoute, removeRoute, uniqueName, newRoute,
@@ -26,6 +26,7 @@ const S = {
   region: '',
   wpMarkers: [],
   edgeMarkers: [],
+  insertAfter: null,      // n번 뒤에 넣기로 지정한 위치 (null이면 자동)
 };
 
 const $ = id => document.getElementById(id);
@@ -329,12 +330,14 @@ function renderPanel() {
   list.innerHTML = stops.map((s, i) => {
     const edge = i === 0 || i === stops.length - 1 ? ' edge' : '';
     const badge = i === 0 ? '출' : (i === stops.length - 1 ? '골' : i + 1);
-    return `<div class="item${edge}" draggable="${!S.viewer}" data-i="${i}">
+    const pinned = S.insertAfter === i ? ' insert-target' : '';
+    return `<div class="item${edge}${pinned}" draggable="${!S.viewer}" data-i="${i}">
       ${S.viewer ? '' : '<span class="grip">⠿</span>'}
       <span class="num">${badge}</span>
       <span class="nm" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
       <span class="seg">${fmtKm(cum[i])}km</span>
-      ${S.viewer ? '' : `<button class="x" data-del="${i}" title="제거">✕</button>`}
+      ${S.viewer ? '' : `<button class="ins" data-ins="${i}" title="이 뒤에 정류장 넣기">⊕</button>
+      <button class="x" data-del="${i}" title="제거">✕</button>`}
     </div>`;
   }).join('');
 }
@@ -343,6 +346,12 @@ function bindPanelEvents() {
   const list = $('list');
 
   list.addEventListener('click', e => {
+    const ins = e.target.closest('[data-ins]');
+    if (ins) {
+      const i = Number(ins.dataset.ins);
+      S.insertAfter === i ? clearInsertPoint() : setInsertPoint(i);
+      return;
+    }
     const del = e.target.closest('[data-del]');
     if (!del) return;
     snapshot('정류장 제거');
@@ -386,16 +395,45 @@ function bindPanelEvents() {
 }
 
 function toggleStop(id) {
-  snapshot('정류장 추가/제거');
   const i = S.route.stops.findIndex(s => s.id === id);
+
   if (i >= 0) {
+    snapshot('정류장 제거');
     S.route.stops.splice(i, 1);
-  } else {
-    const s = S.byId.get(id);
-    if (!s) return;
-    S.route.stops.push({ id: s.id, name: s.name, lat: s.lat, lng: s.lng });
+    renderPanel(); drawRoute();
+    return;
   }
+
+  const stop = S.byId.get(id);
+  if (!stop) return;
+  const entry = { id: stop.id, name: stop.name, lat: stop.lat, lng: stop.lng };
+
+  snapshot('정류장 추가');
+  const pinned = S.insertAfter !== null;
+  const at = pinned ? S.insertAfter + 1 : bestInsertIndex(S.route.stops, entry);
+  S.route.stops.splice(at, 0, entry);
+  clearInsertPoint();
+
   renderPanel(); drawRoute();
+
+  if (at === S.route.stops.length - 1) {
+    toast(`${stop.name} 맨 뒤에 추가`);
+  } else {
+    toast(`${stop.name} → ${at}번과 ${at + 1}번 사이에 넣었습니다 (⌘Z로 취소)`, 3000);
+  }
+}
+
+/** 목록에서 "이 뒤에 넣기"를 눌러 위치를 고정한다 */
+function setInsertPoint(index) {
+  S.insertAfter = index;
+  renderPanel();
+  toast(`다음에 고르는 정류장을 ${index + 1}번 뒤에 넣습니다 — Esc로 취소`, 4000);
+}
+
+function clearInsertPoint() {
+  if (S.insertAfter === null) return;
+  S.insertAfter = null;
+  renderPanel();
 }
 
 /* ───────────────────────── 검색 ───────────────────────── */
@@ -785,6 +823,10 @@ function bindUI() {
     S.waypoints.pop(); drawWaypoints(); recomputePreview();
   });
 
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape') { clearInsertPoint(); if (S.composing) setComposing(false); }
+  });
+
   bindPanelEvents(); bindSearch(); bindSheet();
 }
 
@@ -802,6 +844,7 @@ async function main() {
   bindUI();
   refreshRouteSelect();
   renderPanel();
+  S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex };
   window.__app = S;   // 스모크 테스트용
 }
 

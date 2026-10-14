@@ -257,6 +257,47 @@ def main():
           p.ev('__app.route.stops.length'))
     p.ev("document.getElementById('route-name').blur()")
 
+    print('\n== 중간에 정류장 끼우기 ==')
+    # 5번과 6번 사이에 있는 정류장을 찾아 클릭했을 때 그 자리에 들어가는지
+    pos = p.ev("""(() => {
+      const r = __app.route.stops;
+      const a = r[4], b = r[5];
+      const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
+      const used = new Set(r.map(s => s.id));
+      let best = null, bestD = Infinity;
+      for (const s of __app.stops) {
+        if (used.has(s.id)) continue;
+        const d = (s.lat - mid.lat) ** 2 + (s.lng - mid.lng) ** 2;
+        if (d < bestD) { bestD = d; best = s; }
+      }
+      __app.api.toggleStop(best.id);
+      return __app.route.stops.findIndex(s => s.id === best.id);
+    })()""")
+    time.sleep(1)
+    check('빠뜨린 정류장이 5번과 6번 사이로 들어감', pos == 5, f'{pos}번째 자리')
+    check('전체 191개', p.ev('__app.route.stops.length') == 191, p.ev('__app.route.stops.length'))
+    check('안내 문구에 위치 표시', '사이에' in (p.ev("document.getElementById('toast').textContent") or ''),
+          p.ev("document.getElementById('toast').textContent"))
+
+    # ⊕ 로 위치를 고정했을 때는 그 자리에 강제로 들어가는지
+    pinned = p.ev("""(() => {
+      __app.api.setInsertPoint(0);                       // 1번 뒤에 넣기로 고정
+      const used = new Set(__app.route.stops.map(s => s.id));
+      const far = __app.stops.find(s => !used.has(s.id) && s.city === '인천광역시');
+      __app.api.toggleStop(far.id);
+      return __app.route.stops.findIndex(s => s.id === far.id);
+    })()""")
+    time.sleep(1)
+    check('위치를 고정하면 멀리 있는 정류장도 그 자리에', pinned == 1, f'{pinned}번째 자리')
+    check('고정 해제됨', p.ev('__app.insertAfter') is None, p.ev('__app.insertAfter'))
+
+    p.ev("document.getElementById('tool-undo').click()")
+    time.sleep(1)
+    p.ev("document.getElementById('tool-undo').click()")
+    time.sleep(1)
+    check('두 번 되돌려 190개 복귀', p.ev('__app.route.stops.length') == 190,
+          p.ev('__app.route.stops.length'))
+
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}.png')
     before = p.ev("document.documentElement.dataset.theme")
     p.ev("document.getElementById('theme-btn').click()")

@@ -170,8 +170,11 @@ button { cursor: pointer; }
 .item.edge .num { background: var(--primary); color: var(--on-primary); }
 .nm { flex: 1; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
-.x { color: var(--muted); font-size: 13px; opacity: 0; border: 0; background: none; padding: 2px 4px; }
-.item:hover .x { opacity: 1; }
+.x, .ins { color: var(--muted); font-size: 13px; opacity: 0; border: 0; background: none; padding: 2px 4px; }
+.item:hover .x, .item:hover .ins { opacity: 1; }
+.ins:hover { color: var(--primary); }
+.item.insert-target { background: var(--tint); box-shadow: inset 0 -2px 0 var(--primary); }
+.item.insert-target .ins { opacity: 1; color: var(--primary); }
 
 .panel-foot { padding: 11px 12px; border-top: 1px solid var(--border); display: flex; gap: 7px; flex-wrap: wrap; }
 .btn {
