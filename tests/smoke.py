@@ -446,10 +446,13 @@ def main():
     check('전체 노선 목록이 뜸', p.ev("!document.getElementById('routes-list').hidden"))
     check('메뉴에 켜진 상태로 표시',
           p.ev("document.getElementById('tool-overlay').getAttribute('aria-pressed')") == 'true')
+    # 저장된 노선 수는 환경마다 다르다(로컬=테스트가 만든 것, 프로덕션=실제 데이터).
+    # 고정값 대신 저장소의 실제 개수에서 기대값을 끌어낸다.
+    saved = p.ev("__app.store.routes.length")
     rows = p.ev("document.querySelectorAll('#routes-list .route-row').length")
-    check('저장된 노선이 모두 나열됨', rows == 2, f'{rows}개')
+    check('저장된 노선이 모두 나열됨', rows == saved, f'{rows}개 / 저장 {saved}개')
     feats = p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length")
-    check('편집 중인 것 빼고 지도에 그려짐', feats == 1, f'{feats}개')
+    check('편집 중인 것 빼고 지도에 그려짐', feats == saved - 1, f'{feats}개 / 기대 {saved - 1}개')
     check('전체 보기에도 정류장 순번이 그려짐', p.ev("""(() => {
       if (!__app.map.getLayer('all-numbers')) return false;
       const feats = __app.map.getSource('routes-all')._data.features;
@@ -478,10 +481,12 @@ def main():
       other.click();
     })()""")
     time.sleep(0.8)
-    check('체크를 끄면 지도에서 사라짐', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 0)
+    check('체크를 끄면 지도에서 사라짐', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == saved - 2,
+          f'기대 {saved - 2}개')
     p.ev("document.querySelector('#routes-list [data-all=\"on\"]').click()")
     time.sleep(0.8)
-    check('모두 켜기로 되돌아옴', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 1)
+    check('모두 켜기로 되돌아옴', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == saved - 1,
+          f'기대 {saved - 1}개')
 
     # 한 개만 보기
     other_id = p.ev("""(() => {
@@ -507,8 +512,8 @@ def main():
       row.querySelector('[data-solo]').click();
     })()""")
     time.sleep(1)
-    check('한 번 더 누르면 전체 보기로 복귀', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 1,
-          p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length"))
+    back = p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length")
+    check('한 번 더 누르면 전체 보기로 복귀', back == saved - 1, f'{back}개 / 기대 {saved - 1}개')
     # 이후 검사를 위해 190개 노선으로 되돌린다
     p.ev("""(() => {
       const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
