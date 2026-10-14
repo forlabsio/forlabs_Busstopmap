@@ -166,6 +166,22 @@
 
 <div class="data-pending" id="data-pending" hidden>정류장 불러오는 중…</div>
 
+<!-- 편집 권한 입력 (브라우저가 prompt를 막는 경우가 있어 앱 안에서 받는다) -->
+<div class="modal-backdrop" id="key-backdrop" hidden></div>
+<div class="modal" id="key-modal" hidden role="dialog" aria-modal="true" aria-labelledby="key-title">
+  <h3 id="key-title">편집 권한</h3>
+  <p>키를 넣으면 이 기기에서 노선을 수정하고 서버에 저장할 수 있습니다.<br>
+     키 없이도 보기는 가능합니다.</p>
+  <input id="key-input" type="text" inputmode="text" autocomplete="off"
+         autocapitalize="off" spellcheck="false" placeholder="편집 권한 키">
+  <div class="modal-msg" id="key-msg" hidden></div>
+  <div class="modal-actions">
+    <button class="btn ghost" id="key-clear">읽기 전용으로</button>
+    <button class="btn ghost" id="key-cancel">취소</button>
+    <button class="btn" id="key-save">확인</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="loading" id="loading">

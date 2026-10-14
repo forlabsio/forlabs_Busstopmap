@@ -907,23 +907,37 @@ async function persist({ silent = false } = {}) {
   return false;
 }
 
-async function askEditKey() {
-  const current = S.editKey;
-  const input = prompt('편집 권한 키를 넣으세요 (비우면 읽기 전용)', current);
-  if (input === null) return;
-  const key = input.trim();
+function openKeyModal() {
+  $('key-modal').hidden = false;
+  $('key-backdrop').hidden = false;
+  $('key-input').value = S.editKey || '';
+  setKeyMsg('');
+  setTimeout(() => $('key-input').focus(), 50);
+}
 
-  if (!key) {
-    setEditKey(''); S.editKey = '';
-    describeSync();
-    return toast('읽기 전용으로 바꿨습니다');
-  }
+function closeKeyModal() {
+  $('key-modal').hidden = true;
+  $('key-backdrop').hidden = true;
+}
 
+function setKeyMsg(text, ok = false) {
+  const el = $('key-msg');
+  el.textContent = text;
+  el.className = 'modal-msg' + (ok ? ' ok' : '');
+  el.hidden = !text;
+}
+
+async function submitEditKey() {
+  const key = $('key-input').value.trim();
+  if (!key) return setKeyMsg('키를 입력하거나 "읽기 전용으로"를 누르세요');
+
+  setKeyMsg('확인 중…', true);
   const valid = await checkEditKey(key);
-  if (!valid) return toast('키가 맞지 않습니다', 4000);
+  if (!valid) return setKeyMsg('키가 맞지 않습니다');
 
   setEditKey(key); S.editKey = key;
   describeSync();
+  closeKeyModal();
   toast('편집 권한이 켜졌습니다');
 
   // 서버가 비어 있고 이 기기에만 노선이 있으면 올려준다
@@ -936,6 +950,15 @@ async function askEditKey() {
     }
   }
 }
+
+function clearEditKey() {
+  setEditKey(''); S.editKey = '';
+  describeSync();
+  closeKeyModal();
+  toast('읽기 전용으로 바꿨습니다');
+}
+
+function askEditKey() { openKeyModal(); }
 
 /* ───────────────────────── 저장 / 불러오기 ───────────────────────── */
 
@@ -1563,6 +1586,14 @@ function bindUI() {
   $('tool-import').addEventListener('click', () => $('import-file').click());
   $('tool-import-published').addEventListener('click', importPublished);
   $('tool-editkey').addEventListener('click', askEditKey);
+  $('key-save').addEventListener('click', submitEditKey);
+  $('key-clear').addEventListener('click', clearEditKey);
+  $('key-cancel').addEventListener('click', closeKeyModal);
+  $('key-backdrop').addEventListener('click', closeKeyModal);
+  $('key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitEditKey(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeKeyModal(); }
+  });
   $('import-file').addEventListener('change', e => {
     if (e.target.files[0]) importRoutes(e.target.files[0]);
     e.target.value = '';
