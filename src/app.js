@@ -221,7 +221,7 @@ function applyTheme(mode, { redraw = true } = {}) {
   localStorage.setItem('route-theme', mode);
 
   const btn = $('theme-btn');
-  if (btn) btn.textContent = mode === 'dark' ? '☀ 밝은 테마로' : '☾ 어두운 테마로';
+  if (btn) btn.setAttribute('aria-pressed', String(mode === 'dark'));
   if (redraw && S.map) {
     S.map.setStyle(BASEMAP[mode]);
     S.map.once('styledata', () => { installLayers(); drawRoute(); drawPreview(); drawAllRoutes(); });
@@ -741,7 +741,7 @@ function setComposing(on) {
   $('routes-list').hidden = on || !S.overlay;
   $('foot-default').hidden = on;
   $('foot-compose').hidden = !on;
-  $('tool-compose').textContent = on ? '✕ 자동 만들기 끝내기' : '✨ 코스 자동 만들기';
+  $('tool-compose').querySelector('span').textContent = on ? '자동 만들기 끝내기' : '코스 자동 만들기';
   S.map.getCanvas().style.cursor = on ? 'crosshair' : '';
   if (on && innerWidth < 768) setSheet('half');   // 슬라이더가 보이게
   if (!on) clearWaypoints();
@@ -1126,7 +1126,7 @@ function setOverlay(on) {
   S.overlay = on;
   $('routes-list').hidden = !on;
   $('list').hidden = on || S.composing;
-  $('tool-overlay').textContent = on ? '🗺 전체 노선 보기 끄기' : '🗺 전체 노선 보기';
+  $('tool-overlay').setAttribute('aria-pressed', String(on));
   if (on) {
     renderRoutesList();
     if (innerWidth < 768) setSheet('half');

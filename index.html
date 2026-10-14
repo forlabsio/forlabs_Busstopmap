@@ -110,19 +110,47 @@
 <!-- 더보기 메뉴 (모바일에서는 하단 액션시트) -->
 <div class="menu-backdrop" id="menu-backdrop" hidden></div>
 <div class="menu" id="menu" role="menu" hidden>
-  <div class="menu-title">노선 만들기</div>
-  <button role="menuitem" id="tool-compose">✨ 코스 자동 만들기</button>
-  <button role="menuitem" id="tool-new">＋ 새 노선 시작</button>
-  <button role="menuitem" id="tool-overlay">🗺 전체 노선 보기</button>
+  <div class="menu-group">만들기</div>
+  <button role="menuitem" id="tool-compose">
+    <svg viewBox="0 0 24 24"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+    <span>코스 자동 만들기</span>
+  </button>
+  <button role="menuitem" id="tool-new">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    <span>새 노선</span>
+  </button>
+
+  <div class="menu-group">보기</div>
+  <button role="menuitem" id="tool-overlay" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+    <span>전체 노선</span>
+    <i class="menu-check">✓</i>
+  </button>
+  <button role="menuitem" id="theme-btn" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg>
+    <span>어두운 테마</span>
+    <i class="menu-check">✓</i>
+  </button>
+
+  <div class="menu-group">파일</div>
+  <button role="menuitem" id="btn-export">
+    <svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>
+    <span>내보내기</span>
+  </button>
+  <button role="menuitem" id="tool-import">
+    <svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 19h16"/></svg>
+    <span>가져오기</span>
+  </button>
+  <button role="menuitem" id="tool-print">
+    <svg viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><path d="M5 9h14v7H5z"/><path d="M7 16h10v4H7z"/></svg>
+    <span>인쇄</span>
+  </button>
+
   <hr>
-  <div class="menu-title">파일</div>
-  <button role="menuitem" id="btn-export">⬇ 파일로 내보내기 (백업)</button>
-  <button role="menuitem" id="tool-import">📂 파일에서 가져오기</button>
-  <button role="menuitem" id="tool-print">⎙ 인쇄</button>
-  <hr>
-  <button role="menuitem" id="theme-btn">☾ 어두운 테마로</button>
-  <hr>
-  <button role="menuitem" class="danger" id="tool-delete">🗑 이 노선 삭제</button>
+  <button role="menuitem" class="danger" id="tool-delete">
+    <svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/></svg>
+    <span>노선 삭제</span>
+  </button>
 </div>
 
 <input type="file" id="import-file" accept="application/json,.json" hidden>

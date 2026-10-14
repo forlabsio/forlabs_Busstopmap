@@ -119,7 +119,8 @@ def main():
     print(f'\n== 로딩 ({"모바일" if MOBILE else "데스크톱"}) ==')
     check('앱 초기화 완료', booted, f'{time.time() - started:.1f}초')
     check('정류장 데이터 64,347개', p.ev('__app.stops.length') == 64347, p.ev('__app.stops.length'))
-    check('지도 로드 완료', p.ev('!!(window.__app && __app.map && __app.map.loaded())'))
+    check('지도 스타일 적용 완료',
+          p.wait_for("!!(window.__app && __app.map && __app.map.isStyleLoaded())", 20, '스타일'))
     check('로딩 오버레이가 실제로 안 보임', p.ev("""(() => {
       const el = document.getElementById('loading');
       return el.offsetParent === null && getComputedStyle(el).display === 'none';
@@ -195,6 +196,14 @@ def main():
     time.sleep(0.6)
     check('메뉴 열림', p.ev("!document.getElementById('menu').hidden"))
     items = p.ev("Array.from(document.querySelectorAll('#menu button')).map(b => b.id).join(',')")
+    check('메뉴가 그룹으로 나뉘어 있음',
+          (p.ev("Array.from(document.querySelectorAll('#menu .menu-group')).map(e=>e.textContent).join('/')") or '')
+          == '만들기/보기/파일',
+          p.ev("Array.from(document.querySelectorAll('#menu .menu-group')).map(e=>e.textContent).join('/')"))
+    check('모든 항목에 같은 종류의 아이콘',
+          p.ev("document.querySelectorAll('#menu button svg').length")
+          == p.ev("document.querySelectorAll('#menu button').length"),
+          f"{p.ev(chr(34)+'document.querySelectorAll(' + chr(39) + '#menu button svg' + chr(39) + ').length'+chr(34))}개")
     check('메뉴에 관리 기능이 모여 있음',
           all(k in (items or '') for k in ['tool-compose', 'tool-new', 'btn-export', 'tool-import',
                                            'tool-print', 'theme-btn', 'tool-delete']), items)
@@ -373,6 +382,8 @@ def main():
     p.ev("document.getElementById('tool-overlay').click()")
     time.sleep(1.2)
     check('전체 노선 목록이 뜸', p.ev("!document.getElementById('routes-list').hidden"))
+    check('메뉴에 켜진 상태로 표시',
+          p.ev("document.getElementById('tool-overlay').getAttribute('aria-pressed')") == 'true')
     rows = p.ev("document.querySelectorAll('#routes-list .route-row').length")
     check('저장된 노선이 모두 나열됨', rows == 2, f'{rows}개')
     feats = p.ev("__app.map.getSource('routes-all')._data.features.length")
@@ -583,9 +594,10 @@ def main():
     after = p.ev("document.documentElement.dataset.theme")
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}-{after}.png')
     check('테마 토글', before != after and after in ('light', 'dark'), f'{before} -> {after}')
-    theme_label = p.ev("document.getElementById('theme-btn').textContent") or ''
-    check('테마 메뉴 문구가 전환될 상태를 표시',
-          ('밝은' if after == 'dark' else '어두운') in theme_label, theme_label)
+    check('테마 메뉴가 현재 상태를 체크로 표시',
+          p.ev("document.getElementById('theme-btn').getAttribute('aria-pressed')")
+          == ('true' if after == 'dark' else 'false'),
+          p.ev("document.getElementById('theme-btn').getAttribute('aria-pressed')"))
     check('테마 전환 후 노선 유지', p.ev('__app.route.stops.length') == 190,
           p.ev('__app.route.stops.length'))
 
