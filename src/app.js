@@ -347,11 +347,38 @@ function installLayers() {
   });
   S.map.addLayer({
     id: 'all-label', type: 'symbol', source: 'routes-all', minzoom: 10,
+    filter: ['==', ['geometry-type'], 'LineString'],
     layout: {
       'text-field': ['get', 'name'], 'text-font': ['Open Sans Bold'], 'text-size': 11,
       'symbol-placement': 'line-center', 'text-padding': 4,
     },
     paint: { 'text-color': ['get', 'color'], 'text-halo-color': c('--canvas'), 'text-halo-width': 2 },
+  });
+  S.map.addLayer({
+    id: 'all-dots', type: 'circle', source: 'routes-all',
+    filter: ['==', ['geometry-type'], 'Point'],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4, 13, 6.5, 16, 10],
+      'circle-color': ['case', ['get', 'edge'], ['get', 'color'], c('--canvas')],
+      'circle-stroke-width': 2, 'circle-stroke-color': ['get', 'color'],
+    },
+  });
+  S.map.addLayer({
+    id: 'all-numbers', type: 'symbol', source: 'routes-all', minzoom: 11.5,
+    filter: ['==', ['geometry-type'], 'Point'],
+    layout: {
+      'text-field': ['to-string', ['get', 'n']],
+      'text-font': ['Open Sans Bold'],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8.5, 14, 10, 16, 12],
+      'text-allow-overlap': ['step', ['zoom'], false, 14.5, true],
+      'text-ignore-placement': ['step', ['zoom'], false, 14.5, true],
+      'text-padding': 1,
+    },
+    paint: {
+      'text-color': ['case', ['get', 'edge'], '#ffffff', ['get', 'color']],
+      'text-halo-color': ['case', ['get', 'edge'], ['get', 'color'], c('--canvas')],
+      'text-halo-width': 1,
+    },
   });
 
   // 노선
@@ -426,11 +453,18 @@ function drawAllRoutes() {
   const fc = emptyFC();
   if (S.overlay) {
     for (const r of visibleRoutes()) {
+      const color = colorOf(r);
       fc.features.push({
         type: 'Feature',
-        properties: { name: r.name, color: colorOf(r) },
+        properties: { name: r.name, color },
         geometry: { type: 'LineString', coordinates: r.stops.map(s => [s.lng, s.lat]) },
       });
+      // 편집 중인 노선과 똑같이 정류장마다 순번을 붙인다
+      r.stops.forEach((stop, i) => fc.features.push({
+        type: 'Feature',
+        properties: { color, n: i + 1, edge: i === 0 || i === r.stops.length - 1 },
+        geometry: { type: 'Point', coordinates: [stop.lng, stop.lat] },
+      }));
     }
   }
   S.map.getSource('routes-all').setData(fc);
@@ -524,9 +558,10 @@ function fitToStops(stops) {
   const b = new maplibregl.LngLatBounds();
   stops.forEach(s => b.extend([s.lng, s.lat]));
   const narrow = innerWidth < 768;
+  const panelHidden = document.body.classList.contains('panel-collapsed');
   S.map.fitBounds(b, {
     padding: narrow ? { top: 80, bottom: 200, left: 30, right: 30 }
-                    : { top: 110, bottom: 90, left: 80, right: 400 },
+                    : { top: 110, bottom: 90, left: 80, right: panelHidden ? 80 : 400 },
     duration: 600,
   });
 }
@@ -1324,9 +1359,10 @@ function fitAllRoutes() {
   if (S.route.stops.length) add(S.route.stops);
   if (!any) return toast('표시할 노선이 없습니다');
   const narrow = innerWidth < 768;
+  const panelHidden = document.body.classList.contains('panel-collapsed');
   S.map.fitBounds(bounds, {
     padding: narrow ? { top: 80, bottom: 220, left: 30, right: 30 }
-                    : { top: 110, bottom: 90, left: 80, right: 400 },
+                    : { top: 110, bottom: 90, left: 80, right: panelHidden ? 80 : 400 },
     duration: 700,
   });
 }
@@ -1469,6 +1505,29 @@ function setSheet(state) {
   S.sheet = state;
 }
 
+const PANEL_KEY = 'route-panel-collapsed';
+
+function setPanelCollapsed(collapsed) {
+  document.body.classList.toggle('panel-collapsed', collapsed);
+  const btn = $('panel-toggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.title = collapsed ? '패널 펼치기' : '패널 접기';
+    btn.textContent = collapsed ? '‹' : '›';
+  }
+  try { localStorage.setItem(PANEL_KEY, collapsed ? '1' : ''); } catch { /* 무시 */ }
+}
+
+function bindPanelToggle() {
+  const btn = $('panel-toggle');
+  if (!btn) return;
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(PANEL_KEY) === '1'; } catch { /* 무시 */ }
+  setPanelCollapsed(collapsed);
+  btn.addEventListener('click', () =>
+    setPanelCollapsed(!document.body.classList.contains('panel-collapsed')));
+}
+
 function bindSheet() {
   const panel = $('panel');
   const handle = $('sheet-handle');
@@ -1572,6 +1631,7 @@ function bindUI() {
   });
 
   bindPanelEvents(); bindSearch(); bindSheet(); bindRoutesList(); bindPalette(); bindRename();
+  bindPanelToggle();
   addEventListener('resize', syncPeekHeight);
 }
 

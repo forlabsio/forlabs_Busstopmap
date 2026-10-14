@@ -265,6 +265,24 @@ def main():
         })()"""), )
         check('가로 스크롤 없음', p.ev("document.documentElement.scrollWidth <= innerWidth"))
 
+    print('\n== 패널 접기 ==')
+    if not MOBILE:
+        before = p.ev("document.querySelector('.panel').getBoundingClientRect().left")
+        p.ev("document.getElementById('panel-toggle').click()")
+        time.sleep(1)
+        after = p.ev("document.querySelector('.panel').getBoundingClientRect().left")
+        check('접으면 패널이 화면 밖으로', (after or 0) > (before or 0) + 100, f'{before} -> {after}')
+        check('접힌 상태에서도 버튼은 보임', p.ev("""(() => {
+          const b = document.getElementById('panel-toggle').getBoundingClientRect();
+          return b.right <= innerWidth + 1 && b.width > 0;
+        })()"""))
+        p.ev("document.getElementById('panel-toggle').click()")
+        time.sleep(1)
+        back = p.ev("document.querySelector('.panel').getBoundingClientRect().left")
+        check('다시 펼쳐짐', abs((back or 0) - (before or 0)) < 2, f'{back} vs {before}')
+        check('상태가 저장됨', p.ev("localStorage.getItem('route-panel-collapsed')") in ('', None),
+              p.ev("localStorage.getItem('route-panel-collapsed')"))
+
     print('\n== 지도 순번 ==')
     check('순번 레이어 존재', p.ev("!!__app.map.getLayer('route-numbers')"))
     check('노선 점에 순번 속성', p.ev("""(() => {
@@ -396,8 +414,15 @@ def main():
           p.ev("document.getElementById('tool-overlay').getAttribute('aria-pressed')") == 'true')
     rows = p.ev("document.querySelectorAll('#routes-list .route-row').length")
     check('저장된 노선이 모두 나열됨', rows == 2, f'{rows}개')
-    feats = p.ev("__app.map.getSource('routes-all')._data.features.length")
+    feats = p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length")
     check('편집 중인 것 빼고 지도에 그려짐', feats == 1, f'{feats}개')
+    check('전체 보기에도 정류장 순번이 그려짐', p.ev("""(() => {
+      if (!__app.map.getLayer('all-numbers')) return false;
+      const feats = __app.map.getSource('routes-all')._data.features;
+      const pts = feats.filter(f => f.geometry.type === 'Point');
+      return pts.length > 0 && pts.every(f => typeof f.properties.n === 'number')
+          && pts.every(f => !!f.properties.color);
+    })()"""))
     check('노선마다 다른 색', p.ev("""(() => {
       const dots = Array.from(document.querySelectorAll('#routes-list .dot'))
         .map(d => d.style.background);
@@ -410,12 +435,10 @@ def main():
       other.click();
     })()""")
     time.sleep(0.8)
-    check('체크를 끄면 지도에서 사라짐',
-          p.ev("__app.map.getSource('routes-all')._data.features.length") == 0)
+    check('체크를 끄면 지도에서 사라짐', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 0)
     p.ev("document.querySelector('#routes-list [data-all=\"on\"]').click()")
     time.sleep(0.8)
-    check('모두 켜기로 되돌아옴',
-          p.ev("__app.map.getSource('routes-all')._data.features.length") == 1)
+    check('모두 켜기로 되돌아옴', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 1)
 
     # 한 개만 보기
     other_id = p.ev("""(() => {
@@ -428,9 +451,8 @@ def main():
     time.sleep(2)
     check('"이것만"을 누르면 그 노선이 편집 대상이 됨', p.ev("__app.route.id") == other_id,
           f'{p.ev("__app.route.id")} vs {other_id}')
-    check('다른 노선은 지도에서 사라짐',
-          p.ev("__app.map.getSource('routes-all')._data.features.length") == 0,
-          p.ev("__app.map.getSource('routes-all')._data.features.length"))
+    check('다른 노선은 지도에서 사라짐', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 0,
+          p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length"))
     check('버튼이 "모두"로 바뀜', p.ev("""(() => {
       const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
         .find(r => r.dataset.id === __app.route.id);
@@ -442,9 +464,8 @@ def main():
       row.querySelector('[data-solo]').click();
     })()""")
     time.sleep(1)
-    check('한 번 더 누르면 전체 보기로 복귀',
-          p.ev("__app.map.getSource('routes-all')._data.features.length") == 1,
-          p.ev("__app.map.getSource('routes-all')._data.features.length"))
+    check('한 번 더 누르면 전체 보기로 복귀', p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length") == 1,
+          p.ev("__app.map.getSource('routes-all')._data.features.filter(f => f.geometry.type === 'LineString').length"))
     # 이후 검사를 위해 190개 노선으로 되돌린다
     p.ev("""(() => {
       const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
