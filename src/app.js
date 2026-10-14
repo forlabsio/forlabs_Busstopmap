@@ -26,6 +26,7 @@ const S = {
   region: '',
   wpMarkers: [],
   edgeMarkers: [],
+  pickers: {},
   insertAfter: null,      // n번 뒤에 넣기로 지정한 위치 (null이면 자동)
 };
 
@@ -75,6 +76,120 @@ function toast(msg, ms = 2200) {
   toast._t = setTimeout(() => el.classList.remove('show'), ms);
 }
 
+/* ───────────────────────── 셀렉트 컴포넌트 ───────────────────────── */
+
+/**
+ * OS 기본 select 대신 쓰는 드롭다운.
+ * items: [{ value, label, meta?, divider? }]
+ */
+function createSelect(host, { onChange, placeholder = '선택' } = {}) {
+  let items = [], value = null, active = -1;
+
+  host.innerHTML = `
+    <button type="button" class="select-trigger" aria-haspopup="listbox" aria-expanded="false">
+      <span class="select-label">${placeholder}</span>
+      <svg class="select-caret" width="11" height="11" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="3"><path d="M5 9l7 7 7-7"/></svg>
+    </button>
+    <div class="select-menu" role="listbox" hidden></div>`;
+
+  const trigger = host.querySelector('.select-trigger');
+  const label = host.querySelector('.select-label');
+  const menu = host.querySelector('.select-menu');
+
+  const isOpen = () => !menu.hidden;
+
+  function renderMenu() {
+    menu.innerHTML = items.map((it, i) => it.divider
+      ? '<div class="select-divider"></div>'
+      : `<div class="select-option" role="option" data-i="${i}"
+              aria-selected="${it.value === value}">
+           <span class="opt-check">✓</span>
+           <span class="opt-name">${escapeHtml(it.label)}</span>
+           ${it.meta ? `<span class="opt-meta">${escapeHtml(it.meta)}</span>` : ''}
+         </div>`).join('');
+  }
+
+  function renderLabel() {
+    const cur = items.find(it => it.value === value);
+    label.textContent = cur ? cur.label : placeholder;
+  }
+
+  function open() {
+    if (isOpen()) return;
+    renderMenu();
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    active = items.findIndex(it => it.value === value);
+    highlight();
+    const sel = menu.querySelector('[aria-selected="true"]');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+  }
+
+  function close() {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    active = -1;
+  }
+
+  function highlight() {
+    menu.querySelectorAll('.select-option').forEach(el =>
+      el.classList.toggle('is-active', Number(el.dataset.i) === active));
+    const el = menu.querySelector('.is-active');
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }
+
+  function move(step) {
+    const picks = items.map((it, i) => (it.divider ? -1 : i)).filter(i => i >= 0);
+    if (!picks.length) return;
+    const pos = picks.indexOf(active);
+    active = picks[(pos + step + picks.length) % picks.length] ?? picks[0];
+    highlight();
+  }
+
+  function choose(i) {
+    const it = items[i];
+    if (!it || it.divider) return;
+    value = it.value;
+    renderLabel();
+    close();
+    onChange?.(value, it);
+  }
+
+  trigger.addEventListener('click', () => (isOpen() ? close() : open()));
+  menu.addEventListener('click', e => {
+    const el = e.target.closest('.select-option');
+    if (el) choose(Number(el.dataset.i));
+  });
+  menu.addEventListener('mousemove', e => {
+    const el = e.target.closest('.select-option');
+    if (el && Number(el.dataset.i) !== active) { active = Number(el.dataset.i); highlight(); }
+  });
+  trigger.addEventListener('keydown', e => {
+    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
+      e.preventDefault();
+      if (!isOpen()) return open();
+      if (e.key === 'Enter' || e.key === ' ') return choose(active);
+      move(e.key === 'ArrowDown' ? 1 : -1);
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+  document.addEventListener('click', e => { if (!host.contains(e.target)) close(); });
+
+  return {
+    setItems(next, keepValue = true) {
+      items = next;
+      if (!keepValue || !items.some(it => it.value === value)) value = items[0]?.value ?? null;
+      renderLabel();
+      if (isOpen()) renderMenu();
+    },
+    setValue(v) { value = v; renderLabel(); if (isOpen()) renderMenu(); },
+    getValue: () => value,
+    close,
+  };
+}
+
 /* ───────────────────────── 테마 ───────────────────────── */
 
 function currentTheme() {
@@ -112,9 +227,14 @@ async function loadStops() {
   S.stops = rows.map(([id, name, lat, lng, city]) => ({ id, name, lat, lng, city }));
   S.byId = new Map(S.stops.map(s => [s.id, s]));
 
-  const regions = [...new Set(S.stops.map(s => s.city))].sort();
-  const sel = $('region');
-  regions.forEach(r => sel.add(new Option(r, r)));
+  const counts = new Map();
+  S.stops.forEach(s => counts.set(s.city, (counts.get(s.city) || 0) + 1));
+  const regions = [...counts.keys()].sort();
+  S.pickers.region.setItems([
+    { value: '', label: '전국', meta: S.stops.length.toLocaleString() },
+    { divider: true },
+    ...regions.map(r => ({ value: r, label: r, meta: counts.get(r).toLocaleString() })),
+  ]);
 }
 
 function stopsFeatureCollection() {
@@ -593,10 +713,12 @@ function applyWaypoints({ append = false } = {}) {
 /* ───────────────────────── 저장 / 불러오기 ───────────────────────── */
 
 function refreshRouteSelect() {
-  const sel = $('route-select');
-  sel.innerHTML = '<option value="">새 노선</option>';
-  S.store.routes.forEach(r => sel.add(new Option(`${r.name} (${r.stops.length})`, r.id)));
-  sel.value = S.route.id || '';
+  const items = [{ value: '', label: '새 노선' }];
+  if (S.store.routes.length) items.push({ divider: true });
+  S.store.routes.forEach(r =>
+    items.push({ value: r.id, label: r.name, meta: `${r.stops.length}개` }));
+  S.pickers.route.setItems(items, false);
+  S.pickers.route.setValue(S.route.id || '');
 }
 
 function loadRoute(id) {
@@ -785,14 +907,8 @@ function bindUI() {
   $('theme-btn').addEventListener('click', () =>
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
 
-  $('region').addEventListener('change', e => {
-    S.region = e.target.value;
-    $('region-chip').classList.toggle('active', !!S.region);
-    if (S.map.getSource('stops')) S.map.getSource('stops').setData(stopsFeatureCollection());
-    if (S.composing) recomputePreview();
-  });
-
-  $('route-select').addEventListener('change', e => loadRoute(e.target.value));
+  // 드롭다운은 데이터 로딩 전에 만들어 둔다 (loadStops가 바로 채운다)
+  
   $('btn-save').addEventListener('click', saveRoute);
   $('btn-export').addEventListener('click', exportRoutes);
   $('btn-share').addEventListener('click', shareLink);
@@ -832,6 +948,20 @@ function bindUI() {
 
 async function main() {
   applyTheme(currentTheme(), { redraw: false });
+
+  S.pickers.region = createSelect($('region-picker'), {
+    placeholder: '전국',
+    onChange: value => {
+      S.region = value;
+      $('region-picker').classList.toggle('is-filtered', !!value);
+      if (S.map?.getSource('stops')) S.map.getSource('stops').setData(stopsFeatureCollection());
+      if (S.composing) recomputePreview();
+    },
+  });
+  S.pickers.route = createSelect($('route-picker'), {
+    placeholder: '새 노선',
+    onChange: id => loadRoute(id),
+  });
   try {
     await loadStops();
   } catch (err) {

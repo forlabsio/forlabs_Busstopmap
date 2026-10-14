@@ -28,11 +28,7 @@
     <div class="results" id="results"></div>
   </div>
 
-  <div class="chip" id="region-chip">
-    <select id="region">
-      <option value="">전국</option>
-    </select>
-  </div>
+  <div class="select select--chip" id="region-picker"></div>
   <button class="icon-btn" id="theme-btn" title="테마 전환" aria-label="테마 전환">◐</button>
 </div>
 
@@ -40,9 +36,7 @@
 <div class="panel" id="panel">
   <div class="panel-head">
     <span class="viewer-badge">👁 보기 전용으로 공유된 노선</span>
-    <select class="route-select" id="route-select">
-      <option value="">새 노선</option>
-    </select>
+    <div class="select" id="route-picker"></div>
     <input class="route-name" id="route-name" value="새 노선" placeholder="노선 이름">
     <div class="dirty" id="dirty" hidden>● 편집 중 — 저장된 노선은 그대로입니다</div>
     <div class="stats">

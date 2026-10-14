@@ -88,7 +88,7 @@ class Page:
 
     def ready(self, timeout=60):
         self.eval_errors.clear()
-        if not self.wait_for("!!document.getElementById('route-select')", 15, '앱 마크업'):
+        if not self.wait_for("!!document.querySelector('#route-picker .select-trigger')", 15, '앱 마크업'):
             print('    페이지가 앱이 아닙니다. URL을 확인하세요:', self.ev('location.href'))
             return False
         return self.wait_for('!!(window.__app && __app.map && __app.map.loaded() && __app.stops.length)',
@@ -184,11 +184,18 @@ def main():
     time.sleep(2)
     p.ready()
     p.ev("window.confirm = () => true; window.alert = () => {};")
-    names = p.ev("Array.from(document.getElementById('route-select').options).map(o=>o.textContent).join(' | ')")
+    names = p.ev("""(() => {
+      document.querySelector('#route-picker .select-trigger').click();
+      return Array.from(document.querySelectorAll('#route-picker .select-option'))
+        .map(o => o.textContent.replace(/\s+/g, ' ').trim()).join(' | ');
+    })()""")
     check('기존 노선 2개 드롭다운 노출', '풀코스' in (names or ''), names)
-    p.ev("""(() => { const s = document.getElementById('route-select');
-      const o = Array.from(s.options).find(o => o.textContent.includes('풀코스'));
-      s.value = o.value; s.dispatchEvent(new Event('change')); })()""")
+    check('드롭다운에 정류장 수 뱃지', '190개' in (names or ''), names)
+    p.ev("""(() => {
+      const o = Array.from(document.querySelectorAll('#route-picker .select-option'))
+        .find(o => o.textContent.includes('풀코스'));
+      o.click();
+    })()""")
     time.sleep(3)
     check('풀코스 190개 로드', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
     check('지도에 노선 그려짐', (p.ev("__app.map.getSource('route')._data.features.length") or 0) == 191)
