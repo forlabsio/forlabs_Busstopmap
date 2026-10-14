@@ -2,9 +2,10 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <title>마라톤 노선 관리</title>
 <meta name="description" content="전국 버스정류장으로 마라톤 코스를 만들고 공유합니다">
+<meta name="theme-color" content="#3182f6">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="src/theme.css">
@@ -14,7 +15,7 @@
 
 <div id="map"></div>
 
-<!-- 상단 -->
+<!-- 상단: 검색과 지역 필터만 -->
 <div class="topbar">
   <div class="search-wrap">
     <div class="search">
@@ -27,63 +28,94 @@
     </div>
     <div class="results" id="results"></div>
   </div>
-
   <div class="select select--chip" id="region-picker"></div>
-  <button class="icon-btn" id="theme-btn" title="테마 전환" aria-label="테마 전환">◐</button>
 </div>
 
-<!-- 노선 패널 -->
+<!-- 노선 패널 (모바일에서는 바텀시트) -->
 <div class="panel" id="panel">
+  <button class="sheet-handle" id="sheet-handle" aria-label="패널 크기 조절"></button>
+
   <div class="panel-head">
     <span class="viewer-badge">👁 보기 전용으로 공유된 노선</span>
-    <div class="select" id="route-picker"></div>
-    <input class="route-name" id="route-name" value="새 노선" placeholder="노선 이름">
-    <div class="dirty" id="dirty" hidden>● 편집 중 — 저장된 노선은 그대로입니다</div>
+
+    <div class="head-row">
+      <div class="select" id="route-picker"></div>
+      <button class="icon-sm editor-only" id="menu-btn" title="더보기"
+              aria-haspopup="menu" aria-expanded="false">⋯</button>
+    </div>
+
+    <div class="name-row">
+      <button class="color-dot editor-only" id="color-btn" title="노선 색상 바꾸기"></button>
+      <h2 class="route-title" id="route-title">새 노선</h2>
+      <button class="icon-xs editor-only" id="rename-btn" title="이름 변경">✎</button>
+      <input class="route-name" id="route-name" value="새 노선" placeholder="노선 이름" hidden>
+    </div>
+    <div class="palette" id="palette" hidden></div>
+
     <div class="stats">
       <div class="stat"><div class="v" id="stat-km">0<small>km</small></div><div class="k">총 거리</div></div>
       <div class="stat"><div class="v" id="stat-n">0</div><div class="k">정류장</div></div>
       <div class="stat"><div class="v" id="stat-time">0<small>분</small></div><div class="k">예상 (10km/h)</div></div>
     </div>
-    <div class="hint">정류장을 직선으로 이은 거리입니다. 실제 주행 거리보다 짧습니다.</div>
+
+    <div class="meta-row">
+      <span class="hint">정류장을 직선으로 이은 거리입니다.</span>
+      <button class="undo-btn editor-only" id="tool-undo" hidden
+              title="마지막 편집을 되돌립니다 (⌘Z)">↩ 실행 취소</button>
+    </div>
+    <div class="dirty" id="dirty" hidden>● 편집 중 — 저장된 노선은 그대로입니다</div>
   </div>
 
+  <!-- 평소: 정류장 목록 -->
   <div class="list" id="list"></div>
 
+  <!-- 전체 노선 보기 -->
+  <div class="routes" id="routes-list" hidden></div>
+
+  <!-- 코스 자동 만들기 중: 목록 자리를 대신한다 -->
+  <div class="compose" id="compose" hidden>
+    <h4>지도에서 지점을 찍어주세요</h4>
+    <p id="compose-status">출발 → 경유 → 도착 순으로 2곳 이상 찍으면 사이 정류장이 자동으로 채워집니다.</p>
+    <div class="slider-row">
+      <label for="gap">정류장 간격</label>
+      <input type="range" id="gap" min="100" max="1000" step="50" value="250">
+      <output id="gap-out">250m</output>
+    </div>
+    <div class="compose-actions">
+      <button class="btn ghost" id="btn-wp-undo">마지막 지점 취소</button>
+      <button class="btn ghost" id="btn-wp-clear">전부 지우기</button>
+    </div>
+  </div>
+
   <div class="panel-foot">
-    <button class="btn ghost" id="btn-share">공유 링크</button>
-    <button class="btn ghost editor-only" id="btn-export">내보내기</button>
-    <button class="btn editor-only" id="btn-save">노선 저장</button>
-    <button class="btn ghost" id="btn-copy-mine" style="display:none">내 노선으로 복사</button>
+    <div class="foot-row" id="foot-default">
+      <button class="btn ghost" id="btn-share">공유 링크</button>
+      <button class="btn editor-only" id="btn-save">노선 저장</button>
+      <button class="btn ghost" id="btn-copy-mine" hidden>내 노선으로 복사</button>
+    </div>
+    <div class="foot-row" id="foot-compose" hidden>
+      <button class="btn ghost" id="btn-wp-append" disabled hidden>뒤에 이어 붙이기</button>
+      <button class="btn" id="btn-wp-apply" disabled>이대로 확정</button>
+    </div>
   </div>
 </div>
 
-<!-- 거점 모드 -->
-<div class="compose" id="compose">
-  <h4>지점을 찍으면 사이 정류장이 자동으로 채워집니다</h4>
-  <p id="compose-status">지도를 클릭해 출발 → 경유 → 도착 순으로 찍으세요 (2개 이상)</p>
-  <div class="slider-row">
-    <label for="gap">정류장 간격</label>
-    <input type="range" id="gap" min="100" max="1000" step="50" value="250">
-    <output id="gap-out">250m</output>
-  </div>
-  <div class="compose-actions">
-    <button class="btn ghost" id="btn-wp-undo">마지막 지점 취소</button>
-    <button class="btn ghost" id="btn-wp-clear">전부 지우기</button>
-    <button class="btn ghost" id="btn-wp-append" disabled hidden>뒤에 이어 붙이기</button>
-    <button class="btn" id="btn-wp-apply" disabled>이대로 확정</button>
-  </div>
-</div>
-
-<!-- 하단 툴바 -->
-<div class="toolbar">
-  <button class="tool" id="tool-compose"
-          title="지도에서 출발·경유·도착을 찍으면 그 사이 정류장을 자동으로 채웁니다">✨ 코스 자동 만들기</button>
-  <button class="tool" id="tool-undo" title="마지막 편집을 되돌립니다 (⌘Z)">↩ 실행 취소</button>
-  <button class="tool" id="tool-new" title="빈 노선에서 새로 시작합니다">+ 새 노선</button>
-  <button class="tool" id="tool-import" title="내보내기로 받아둔 JSON 파일에서 노선을 가져옵니다">📂 파일에서 가져오기</button>
-  <button class="tool" id="tool-print" title="지도와 정류장 목록을 인쇄합니다">⎙ 인쇄</button>
-  <button class="tool tool-danger" id="tool-delete"
-          title="지금 불러온 노선을 저장소에서 영구 삭제합니다">🗑 이 노선 삭제</button>
+<!-- 더보기 메뉴 (모바일에서는 하단 액션시트) -->
+<div class="menu-backdrop" id="menu-backdrop" hidden></div>
+<div class="menu" id="menu" role="menu" hidden>
+  <div class="menu-title">노선 만들기</div>
+  <button role="menuitem" id="tool-compose">✨ 코스 자동 만들기</button>
+  <button role="menuitem" id="tool-new">＋ 새 노선 시작</button>
+  <button role="menuitem" id="tool-overlay">🗺 전체 노선 보기</button>
+  <hr>
+  <div class="menu-title">파일</div>
+  <button role="menuitem" id="btn-export">⬇ 파일로 내보내기 (백업)</button>
+  <button role="menuitem" id="tool-import">📂 파일에서 가져오기</button>
+  <button role="menuitem" id="tool-print">⎙ 인쇄</button>
+  <hr>
+  <button role="menuitem" id="theme-btn">☾ 어두운 테마로</button>
+  <hr>
+  <button role="menuitem" class="danger" id="tool-delete">🗑 이 노선 삭제</button>
 </div>
 
 <input type="file" id="import-file" accept="application/json,.json" hidden>

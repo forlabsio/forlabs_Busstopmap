@@ -120,7 +120,16 @@ def main():
     check('앱 초기화 완료', booted, f'{time.time() - started:.1f}초')
     check('정류장 데이터 64,347개', p.ev('__app.stops.length') == 64347, p.ev('__app.stops.length'))
     check('지도 로드 완료', p.ev('!!(window.__app && __app.map && __app.map.loaded())'))
-    check('로딩 오버레이 사라짐', p.ev("document.getElementById('loading').classList.contains('hidden')"))
+    check('로딩 오버레이가 실제로 안 보임', p.ev("""(() => {
+      const el = document.getElementById('loading');
+      return el.offsetParent === null && getComputedStyle(el).display === 'none';
+    })()"""))
+    check('지도 캔버스가 화면을 채움', p.ev("""(() => {
+      const c = document.querySelector('#map canvas');
+      if (!c) return false;
+      const r = c.getBoundingClientRect();
+      return r.width > innerWidth * 0.8 && r.height > innerHeight * 0.5;
+    })()"""))
     check('클러스터 레이어 존재', p.ev("!!__app.map.getLayer('clusters')"))
     ko_layers = p.ev("""(() => {
       const ls = __app.map.getStyle().layers.filter(l => l.type === 'symbol');
@@ -129,7 +138,11 @@ def main():
     })()""")
     check('한글 라벨 적용', (ko_layers or 0) >= 20, f'{ko_layers}개 레이어')
 
-    print('\n== 거점 자동 채우기 ==')
+    print('\n== 코스 자동 만들기 ==')
+    check('자동 만들기가 메뉴 안에 있음',
+          p.ev("!!document.querySelector('#menu #tool-compose')"))
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
     p.ev("document.getElementById('tool-compose').click()")
     p.ev("""(() => {
       const wp = [[37.56675,126.89618],[37.54958,126.91383],[37.53817,126.90060],
@@ -158,6 +171,81 @@ def main():
     check('총거리 표시', 'km' in (p.ev("document.getElementById('stat-km').textContent") or ''),
           p.ev("document.getElementById('stat-km').textContent"))
 
+    print('\n== 더보기 메뉴 ==')
+    # 빈 노선 상태에서 안내 버튼으로 바로 시작할 수 있어야 한다 (메뉴에 숨겼으므로 발견성 보완)
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-new').click()")
+    time.sleep(1)
+    check('빈 노선 화면에 바로가기 버튼이 뜸', p.ev("!!document.getElementById('empty-compose')"))
+    p.ev("document.getElementById('empty-compose').click()")
+    time.sleep(1)
+    check('바로가기로 자동 만들기 진입', p.ev("__app.composing") is True, p.ev('__app.composing'))
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.3)
+    p.ev("document.getElementById('tool-compose').click()")       # 끝내기
+    time.sleep(0.5)
+    # "새 노선"으로 비운 것을 되돌려 이후 검사를 이어간다
+    p.ev("document.getElementById('tool-undo').click()")
+    time.sleep(1)
+    check('새 노선으로 비운 것도 되돌려짐', p.ev('__app.route.stops.length') == n_route,
+          f"{p.ev('__app.route.stops.length')} (기대 {n_route})")
+    check('지도 위에 떠 있는 툴바가 없음', p.ev("!document.querySelector('.toolbar')"))
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.6)
+    check('메뉴 열림', p.ev("!document.getElementById('menu').hidden"))
+    items = p.ev("Array.from(document.querySelectorAll('#menu button')).map(b => b.id).join(',')")
+    check('메뉴에 관리 기능이 모여 있음',
+          all(k in (items or '') for k in ['tool-compose', 'tool-new', 'btn-export', 'tool-import',
+                                           'tool-print', 'theme-btn', 'tool-delete']), items)
+    if not MOBILE:
+        check('메뉴가 ⋯ 버튼 아래에 뜸', p.ev("""(() => {
+          const b = document.getElementById('menu-btn').getBoundingClientRect();
+          const m = document.getElementById('menu').getBoundingClientRect();
+          return m.top > b.top && Math.abs(m.right - b.right) < 24;
+        })()"""))
+    p.ev("document.getElementById('menu-backdrop').click()")
+    time.sleep(0.4)
+    check('바깥을 누르면 닫힘', p.ev("document.getElementById('menu').hidden"))
+
+    if MOBILE:
+        print('\n== 모바일 바텀시트 ==')
+        # 앞선 조작으로 시트가 올라가 있을 수 있으니 요약 상태로 맞춘 뒤 검사한다
+        for _ in range(3):
+            if p.ev("__app.sheet") == 'peek':
+                break
+            p.ev("document.getElementById('sheet-handle').click()")
+            time.sleep(0.5)
+        check('요약(peek) 상태로 되돌릴 수 있음', p.ev("__app.sheet") == 'peek', p.ev('__app.sheet'))
+        check('요약 상태에서도 거리/정류장 수가 보임', p.ev("""(() => {
+          const r = document.getElementById('stat-km').getBoundingClientRect();
+          return r.top > 0 && r.bottom < innerHeight;
+        })()"""))
+        p.ev("document.getElementById('sheet-handle').click()")
+        time.sleep(0.6)
+        check('탭하면 반쯤 올라옴', p.ev("__app.sheet") == 'half', p.ev('__app.sheet'))
+        p.ev("document.getElementById('sheet-handle').click()")
+        time.sleep(0.6)
+        check('한 번 더 누르면 전체', p.ev("__app.sheet") == 'full', p.ev('__app.sheet'))
+        check('자동 만들기에 들어가면 시트가 올라감', p.ev("""(() => {
+          document.getElementById('sheet-handle').click();     // peek으로
+          document.getElementById('menu-btn').click();
+          document.getElementById('tool-compose').click();     // 자동 만들기 시작
+          const s = __app.sheet;
+          document.getElementById('menu-btn').click();
+          document.getElementById('tool-compose').click();     // 끝내기
+          return s === 'half' || s === 'full';
+        })()"""))
+        check('목록이 화면 안에 들어옴', p.ev("""(() => {
+          const r = document.querySelector('#list .item').getBoundingClientRect();
+          return r.top > 0 && r.top < innerHeight;
+        })()"""))
+        check('버튼 터치 영역 44px 이상', p.ev("""(() => {
+          const h = document.getElementById('btn-save').getBoundingClientRect().height;
+          return h >= 44;
+        })()"""), )
+        check('가로 스크롤 없음', p.ev("document.documentElement.scrollWidth <= innerWidth"))
+
     print('\n== 지도 순번 ==')
     check('순번 레이어 존재', p.ev("!!__app.map.getLayer('route-numbers')"))
     check('노선 점에 순번 속성', p.ev("""(() => {
@@ -177,8 +265,19 @@ def main():
           == '출발/골인')
 
     print('\n== 저장 / 내보내기 ==')
-    p.ev("document.getElementById('route-name').value='스모크 코스'; "
-         "document.getElementById('route-name').dispatchEvent(new Event('input'))")
+    p.ev("""(() => {
+      document.getElementById('rename-btn').click();
+      const i = document.getElementById('route-name');
+      i.value = '스모크 코스';
+      i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()""")
+    time.sleep(0.6)
+    check('연필로 제목을 바꾸면 제목에 반영', 
+          p.ev("document.getElementById('route-title').textContent") == '스모크 코스',
+          p.ev("document.getElementById('route-title').textContent"))
+    check('편집이 끝나면 입력창은 숨고 제목이 보임',
+          p.ev("document.getElementById('route-name').hidden") is True
+          and p.ev("document.getElementById('route-title').hidden") is False)
     p.ev("document.getElementById('btn-save').click()")
     time.sleep(1)
     saved = p.ev("JSON.parse(localStorage.getItem('marathon-routes')||'{\"routes\":[]}').routes.length")
@@ -218,8 +317,153 @@ def main():
     check('풀코스 190개 로드', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
     check('지도에 노선 그려짐', (p.ev("__app.map.getSource('route')._data.features.length") or 0) == 191)
 
+    print('\n== 노선 색상 ==')
+    before_color = p.ev("__app.route.color")
+    p.ev("document.getElementById('color-btn').click()")
+    time.sleep(0.5)
+    check('팔레트 열림', p.ev("!document.getElementById('palette').hidden"))
+    swatches = p.ev("document.querySelectorAll('#palette [data-color]').length")
+    check('색상 8개 제공', swatches == 8, swatches)
+    p.ev("""(() => {
+      const btns = Array.from(document.querySelectorAll('#palette [data-color]'));
+      const other = btns.find(b => b.dataset.color !== __app.route.color);
+      other.click();
+    })()""")
+    time.sleep(1)
+    after_color = p.ev("__app.route.color")
+    check('색이 바뀜', after_color != before_color, f'{before_color} -> {after_color}')
+    check('지도 노선 색도 따라감',
+          p.ev("__app.map.getPaintProperty('route-line', 'line-color')") == after_color,
+          p.ev("__app.map.getPaintProperty('route-line', 'line-color')"))
+    check('저장본에도 색이 반영됨', p.ev("""(() => {
+      const r = JSON.parse(localStorage.getItem('marathon-routes')).routes.find(r => r.id === __app.route.id);
+      return r && r.color === __app.route.color;
+    })()"""))
+
+    print('\n== 제목으로 이름 변경 ==')
+    p.ev("""(() => {
+      document.getElementById('rename-btn').click();
+      const i = document.getElementById('route-name');
+      i.value = '제목에서 바꾼 이름';
+      i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    })()""")
+    time.sleep(0.8)
+    check('제목이 바뀜', p.ev("document.getElementById('route-title').textContent") == '제목에서 바꾼 이름',
+          p.ev("document.getElementById('route-title').textContent"))
+    check('저장된 노선이면 바로 저장됨', p.ev("""(() => {
+      const r = JSON.parse(localStorage.getItem('marathon-routes')).routes
+        .find(r => r.id === __app.route.id);
+      return r && r.name === '제목에서 바꾼 이름';
+    })()"""))
+    # Esc로 취소하면 되돌아간다
+    p.ev("""(() => {
+      document.getElementById('rename-btn').click();
+      const i = document.getElementById('route-name');
+      i.value = '취소될 이름';
+      i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    })()""")
+    time.sleep(0.6)
+    check('Esc로 취소하면 이름이 그대로',
+          p.ev("document.getElementById('route-title').textContent") == '제목에서 바꾼 이름',
+          p.ev("document.getElementById('route-title').textContent"))
+
+    print('\n== 전체 노선 보기 ==')
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-overlay').click()")
+    time.sleep(1.2)
+    check('전체 노선 목록이 뜸', p.ev("!document.getElementById('routes-list').hidden"))
+    rows = p.ev("document.querySelectorAll('#routes-list .route-row').length")
+    check('저장된 노선이 모두 나열됨', rows == 2, f'{rows}개')
+    feats = p.ev("__app.map.getSource('routes-all')._data.features.length")
+    check('편집 중인 것 빼고 지도에 그려짐', feats == 1, f'{feats}개')
+    check('노선마다 다른 색', p.ev("""(() => {
+      const dots = Array.from(document.querySelectorAll('#routes-list .dot'))
+        .map(d => d.style.background);
+      return new Set(dots).size === dots.length;
+    })()"""))
+
+    p.ev("""(() => {
+      const other = Array.from(document.querySelectorAll('#routes-list [data-toggle]'))
+        .find(c => c.dataset.toggle !== __app.route.id);
+      other.click();
+    })()""")
+    time.sleep(0.8)
+    check('체크를 끄면 지도에서 사라짐',
+          p.ev("__app.map.getSource('routes-all')._data.features.length") == 0)
+    p.ev("document.querySelector('#routes-list [data-all=\"on\"]').click()")
+    time.sleep(0.8)
+    check('모두 켜기로 되돌아옴',
+          p.ev("__app.map.getSource('routes-all')._data.features.length") == 1)
+
+    # 한 개만 보기
+    other_id = p.ev("""(() => {
+      const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
+        .find(r => r.dataset.id !== __app.route.id);
+      const id = row.dataset.id;
+      row.querySelector('[data-solo]').click();
+      return id;
+    })()""")
+    time.sleep(2)
+    check('"이것만"을 누르면 그 노선이 편집 대상이 됨', p.ev("__app.route.id") == other_id,
+          f'{p.ev("__app.route.id")} vs {other_id}')
+    check('다른 노선은 지도에서 사라짐',
+          p.ev("__app.map.getSource('routes-all')._data.features.length") == 0,
+          p.ev("__app.map.getSource('routes-all')._data.features.length"))
+    check('버튼이 "모두"로 바뀜', p.ev("""(() => {
+      const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
+        .find(r => r.dataset.id === __app.route.id);
+      return row.querySelector('[data-solo]').textContent.trim();
+    })()""") == '모두')
+    p.ev("""(() => {
+      const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
+        .find(r => r.dataset.id === __app.route.id);
+      row.querySelector('[data-solo]').click();
+    })()""")
+    time.sleep(1)
+    check('한 번 더 누르면 전체 보기로 복귀',
+          p.ev("__app.map.getSource('routes-all')._data.features.length") == 1,
+          p.ev("__app.map.getSource('routes-all')._data.features.length"))
+    # 이후 검사를 위해 190개 노선으로 되돌린다
+    p.ev("""(() => {
+      const row = Array.from(document.querySelectorAll('#routes-list .route-row'))
+        .find(r => r.querySelector('.rmeta').textContent.startsWith('190'));
+      row.click();
+    })()""")
+    time.sleep(2.5)
+    check('190개 노선으로 복귀', p.ev('__app.route.stops.length') == 190,
+          p.ev('__app.route.stops.length'))
+
+    print('\n== 노선 이름 변경 ==')
+    p.ev("window.prompt = () => '2026 서울 풀코스';")
+    p.ev("""(() => {
+      const target = Array.from(document.querySelectorAll('#routes-list [data-rename]'))
+        .find(b => b.dataset.rename !== __app.route.id);
+      target.click();
+    })()""")
+    time.sleep(1)
+    check('목록에서 이름이 바뀜',
+          '2026 서울 풀코스' in (p.ev("document.getElementById('routes-list').textContent") or ''))
+    check('저장본에도 반영됨', p.ev("""(() => {
+      return JSON.parse(localStorage.getItem('marathon-routes')).routes
+        .some(r => r.name === '2026 서울 풀코스');
+    })()"""))
+    check('드롭다운에도 반영됨', p.ev("""(() => {
+      document.querySelector('#route-picker .select-trigger').click();
+      const t = document.getElementById('route-picker').textContent;
+      document.querySelector('#route-picker .select-trigger').click();
+      return t.includes('2026 서울 풀코스');
+    })()"""))
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.3)
+    p.ev("document.getElementById('tool-overlay').click()")   # 전체 보기 끄기
+    time.sleep(0.6)
+    check('전체 보기를 끄면 목록이 닫힘', p.ev("document.getElementById('routes-list').hidden"))
+
     print('\n== 실수 복구 (되돌리기 / 이어붙이기) ==')
     # 거점을 찍어 자동 채우기 -> 기존 190개에 "이어 붙이기"
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
     p.ev("document.getElementById('tool-compose').click()")
     p.ev("""(() => {
       const wp = [[37.56675,126.89618],[37.54958,126.91383],[37.52953,126.92789]];
@@ -247,6 +491,8 @@ def main():
     check('되돌리기로 190개 복원', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
 
     # 거점 교체 후 되돌리기 (가장 위험한 동작)
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
     p.ev("document.getElementById('tool-compose').click()")
     p.ev("""(() => {
       const wp = [[37.56675,126.89618],[37.52953,126.92789]];
@@ -261,9 +507,11 @@ def main():
     time.sleep(2)
     replaced = p.ev('__app.route.stops.length') or 0
     check('교체되면 정류장이 줄어듦', 0 < replaced < 190, f'{replaced}개')
-    check('교체해도 저장본은 그대로',
-          p.ev("JSON.parse(localStorage.getItem('marathon-routes')).routes"
-               ".find(r => r.name === '풀코스').stops.length") == 190)
+    check('교체해도 저장본은 그대로', p.ev("""(() => {
+      const saved = JSON.parse(localStorage.getItem('marathon-routes')).routes
+        .find(r => r.id === __app.route.id);
+      return !!saved && saved.stops.length === 190;
+    })()"""))
     # 합성 이벤트를 두 번 쏘면 두 단계가 되돌려진다. 실제 키 입력으로 한 번만 보낸다.
     p.ev("document.body.focus()")
     for phase in ('rawKeyDown', 'keyUp'):
@@ -272,15 +520,18 @@ def main():
                                           'modifiers': 4})
     time.sleep(2)
     check('⌘Z로 190개 복원', p.ev('__app.route.stops.length') == 190, p.ev('__app.route.stops.length'))
-    p.ev("document.getElementById('route-name').focus()")
+    p.ev("document.getElementById('rename-btn').click()")   # 이름 편집 상태로
+    time.sleep(0.4)
     for phase in ('rawKeyDown', 'keyUp'):
         p.send('Input.dispatchKeyEvent', {'type': phase, 'key': 'z', 'code': 'KeyZ',
                                           'windowsVirtualKeyCode': 90, 'nativeVirtualKeyCode': 90,
                                           'modifiers': 4})
     time.sleep(1)
-    check('입력창에서는 ⌘Z가 노선을 건드리지 않음', p.ev('__app.route.stops.length') == 190,
+    check('이름 편집 중에는 ⌘Z가 노선을 건드리지 않음', p.ev('__app.route.stops.length') == 190,
           p.ev('__app.route.stops.length'))
-    p.ev("document.getElementById('route-name').blur()")
+    p.ev("""document.getElementById('route-name')
+           .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))""")
+    time.sleep(0.4)
 
     print('\n== 중간에 정류장 끼우기 ==')
     # 5번과 6번 사이에 있는 정류장을 찾아 클릭했을 때 그 자리에 들어가는지
@@ -325,15 +576,16 @@ def main():
 
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}.png')
     before = p.ev("document.documentElement.dataset.theme")
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.5)
     p.ev("document.getElementById('theme-btn').click()")
     time.sleep(5)
     after = p.ev("document.documentElement.dataset.theme")
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}-{after}.png')
     check('테마 토글', before != after and after in ('light', 'dark'), f'{before} -> {after}')
-    check('테마 버튼이 전환될 상태를 표시', p.ev("document.getElementById('theme-btn').textContent")
-          == ('☀' if after == 'dark' else '☾'),
-          p.ev("document.getElementById('theme-btn').textContent + ' / ' "
-               "+ document.getElementById('theme-btn').title"))
+    theme_label = p.ev("document.getElementById('theme-btn').textContent") or ''
+    check('테마 메뉴 문구가 전환될 상태를 표시',
+          ('밝은' if after == 'dark' else '어두운') in theme_label, theme_label)
     check('테마 전환 후 노선 유지', p.ev('__app.route.stops.length') == 190,
           p.ev('__app.route.stops.length'))
 

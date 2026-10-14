@@ -3,6 +3,50 @@
 
 export const STORAGE_KEY = 'marathon-routes';
 
+/** 노선 색상 팔레트. 밝은 테마와 어두운 테마 모두에서 선이 보이는 값으로 고른다. */
+export const ROUTE_COLORS = [
+  '#3182f6', // 파랑
+  '#f04452', // 빨강
+  '#03b26c', // 초록
+  '#fe9800', // 주황
+  '#a234c7', // 보라
+  '#18a5a5', // 청록
+  '#e0317f', // 분홍
+  '#6b7684', // 회색
+];
+
+/** 색이 없는(예전) 노선은 id로 항상 같은 색을 갖게 한다. */
+export function colorOf(route) {
+  if (route && route.color) return route.color;
+  const key = String((route && route.id) || '');
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 997;
+  return ROUTE_COLORS[h % ROUTE_COLORS.length];
+}
+
+/** 아직 안 쓴 색을 먼저 돌려준다. */
+export function nextColor(store) {
+  const used = new Set((store.routes || []).map(r => r.color).filter(Boolean));
+  return ROUTE_COLORS.find(c => !used.has(c)) || ROUTE_COLORS[(store.routes || []).length % ROUTE_COLORS.length];
+}
+
+/** 저장된 노선의 이름을 바꾼다. 중복이면 번호를 붙인다. */
+export function renameRoute(store, id, name) {
+  const route = store.routes.find(r => r.id === id);
+  if (!route) return null;
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+  route.name = uniqueName(store, clean, id);
+  return route.name;
+}
+
+/** 노선 색을 바꾼다. */
+export function setRouteColor(store, id, color) {
+  const route = store.routes.find(r => r.id === id);
+  if (route) route.color = color;
+  return route;
+}
+
 export function emptyStore() {
   return { routes: [] };
 }
@@ -46,11 +90,12 @@ export function uniqueName(store, name, exceptId = null) {
   return `${name} (${n})`;
 }
 
-export function newRoute(name, region, stops) {
+export function newRoute(name, region, stops, color = ROUTE_COLORS[0]) {
   return {
     id: `route-${Date.now()}`,
     name,
     region: region || null,
+    color,
     stops: stops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng })),
     createdAt: new Date().toISOString(),
   };

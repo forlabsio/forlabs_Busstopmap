@@ -4,6 +4,7 @@ import { encodeRoute, decodeRoute, resolveIds } from './share.js';
 import {
   parseStore, serializeStore, upsertRoute, removeRoute, uniqueName, newRoute,
   loadFromBrowser, saveToBrowser, STORAGE_KEY,
+  ROUTE_COLORS, colorOf, nextColor, renameRoute, setRouteColor,
 } from './store.js';
 
 const BASEMAP = {
@@ -17,7 +18,7 @@ const S = {
   stops: [],              // {id,name,lat,lng,city}
   byId: new Map(),
   store: { routes: [] },
-  route: { id: null, name: '새 노선', region: null, stops: [] },
+  route: { id: null, name: '새 노선', region: null, color: ROUTE_COLORS[0], stops: [] },
   waypoints: [],
   candidates: [],         // 거점 모드 미리보기 후보
   preview: [],
@@ -27,6 +28,8 @@ const S = {
   wpMarkers: [],
   edgeMarkers: [],
   pickers: {},
+  overlay: false,          // 전체 노선 보기
+  overlayHidden: new Set(), // 전체 보기에서 꺼둔 노선 id
   insertAfter: null,      // n번 뒤에 넣기로 지정한 위치 (null이면 자동)
 };
 
@@ -37,6 +40,7 @@ const fmtKm = km => (km < 10 ? km.toFixed(2) : km.toFixed(1));
 const undoStack = [];
 
 function snapshot(label) {
+  queueMicrotask(updateUndoButton);
   undoStack.push({
     label,
     name: S.route.name,
@@ -59,7 +63,13 @@ function undo() {
 }
 
 /** 편집 중인 노선이 저장본과 다른지 표시한다 */
+function updateUndoButton() {
+  const btn = $('tool-undo');
+  if (btn) btn.hidden = S.viewer || undoStack.length === 0;
+}
+
 function updateDirty() {
+  updateUndoButton();
   const el = $('dirty');
   if (!el) return;
   const saved = S.route.id && S.store.routes.find(r => r.id === S.route.id);
@@ -104,7 +114,8 @@ function createSelect(host, { onChange, placeholder = '선택' } = {}) {
       ? '<div class="select-divider"></div>'
       : `<div class="select-option" role="option" data-i="${i}"
               aria-selected="${it.value === value}">
-           <span class="opt-check">✓</span>
+           ${it.color ? `<span class="opt-dot" style="background:${it.color}"></span>`
+                      : '<span class="opt-check">✓</span>'}
            <span class="opt-name">${escapeHtml(it.label)}</span>
            ${it.meta ? `<span class="opt-meta">${escapeHtml(it.meta)}</span>` : ''}
          </div>`).join('');
@@ -202,15 +213,11 @@ function applyTheme(mode, { redraw = true } = {}) {
   document.documentElement.dataset.theme = mode;
   localStorage.setItem('route-theme', mode);
 
-  // 버튼은 "누르면 될 상태"를 보여준다
   const btn = $('theme-btn');
-  if (btn) {
-    btn.textContent = mode === 'dark' ? '☀' : '☾';
-    btn.title = mode === 'dark' ? '밝은 테마로 전환' : '어두운 테마로 전환';
-  }
+  if (btn) btn.textContent = mode === 'dark' ? '☀ 밝은 테마로' : '☾ 어두운 테마로';
   if (redraw && S.map) {
     S.map.setStyle(BASEMAP[mode]);
-    S.map.once('styledata', () => { installLayers(); drawRoute(); drawPreview(); });
+    S.map.once('styledata', () => { installLayers(); drawRoute(); drawPreview(); drawAllRoutes(); });
   }
 }
 
@@ -304,6 +311,27 @@ function installLayers() {
     paint: { 'circle-radius': 5, 'circle-color': c('--muted'), 'circle-opacity': .85 },
   });
 
+  // 전체 노선 보기 (편집 중인 노선 아래에 깔린다)
+  S.map.addSource('routes-all', { type: 'geojson', data: emptyFC() });
+  S.map.addLayer({
+    id: 'all-casing', type: 'line', source: 'routes-all',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': c('--canvas'), 'line-width': 7, 'line-opacity': .85 },
+  });
+  S.map.addLayer({
+    id: 'all-line', type: 'line', source: 'routes-all',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': .95 },
+  });
+  S.map.addLayer({
+    id: 'all-label', type: 'symbol', source: 'routes-all', minzoom: 10,
+    layout: {
+      'text-field': ['get', 'name'], 'text-font': ['Open Sans Bold'], 'text-size': 11,
+      'symbol-placement': 'line-center', 'text-padding': 4,
+    },
+    paint: { 'text-color': ['get', 'color'], 'text-halo-color': c('--canvas'), 'text-halo-width': 2 },
+  });
+
   // 노선
   S.map.addSource('route', { type: 'geojson', data: emptyFC() });
   S.map.addLayer({
@@ -316,7 +344,7 @@ function installLayers() {
     id: 'route-line', type: 'line', source: 'route',
     filter: ['==', ['geometry-type'], 'LineString'],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': c('--primary'), 'line-width': 5 },
+    paint: { 'line-color': currentColor(), 'line-width': 5 },
   });
   S.map.addLayer({
     id: 'route-dots', type: 'circle', source: 'route',
@@ -324,8 +352,8 @@ function installLayers() {
     paint: {
       // 순번이 들어가야 하므로 확대할수록 원을 키운다
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 4.5, 13, 7, 16, 11],
-      'circle-color': ['case', ['get', 'edge'], c('--primary'), c('--canvas')],
-      'circle-stroke-width': 2.5, 'circle-stroke-color': c('--primary'),
+      'circle-color': ['case', ['get', 'edge'], currentColor(), c('--canvas')],
+      'circle-stroke-width': 2.5, 'circle-stroke-color': currentColor(),
     },
   });
   S.map.addLayer({
@@ -341,14 +369,50 @@ function installLayers() {
       'text-padding': 1,
     },
     paint: {
-      'text-color': ['case', ['get', 'edge'], c('--on-primary'), c('--primary')],
-      'text-halo-color': ['case', ['get', 'edge'], c('--primary'), c('--canvas')],
+      'text-color': ['case', ['get', 'edge'], '#ffffff', currentColor()],
+      'text-halo-color': ['case', ['get', 'edge'], currentColor(), c('--canvas')],
       'text-halo-width': 1,
     },
   });
 }
 
 const emptyFC = () => ({ type: 'FeatureCollection', features: [] });
+
+const currentColor = () => S.route.color || colorOf(S.route);
+
+/** 색을 바꾸면 편집 중 노선의 레이어 색도 즉시 따라간다 */
+function repaintRoute() {
+  if (!S.map || !S.map.getLayer('route-line')) return;
+  const col = currentColor();
+  const canvas = getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim();
+  S.map.setPaintProperty('route-line', 'line-color', col);
+  S.map.setPaintProperty('route-dots', 'circle-color', ['case', ['get', 'edge'], col, canvas]);
+  S.map.setPaintProperty('route-dots', 'circle-stroke-color', col);
+  S.map.setPaintProperty('route-numbers', 'text-color', ['case', ['get', 'edge'], '#ffffff', col]);
+  S.map.setPaintProperty('route-numbers', 'text-halo-color', ['case', ['get', 'edge'], col, canvas]);
+  const dot = $('color-dot') || $('color-btn');
+  if (dot) dot.style.background = col;
+}
+
+/** 전체 보기에서 켜져 있는 노선들 (편집 중인 것은 위에 따로 그린다) */
+function visibleRoutes() {
+  return S.store.routes.filter(r => !S.overlayHidden.has(r.id) && r.id !== S.route.id && r.stops.length > 1);
+}
+
+function drawAllRoutes() {
+  if (!S.map || !S.map.getSource('routes-all')) return;
+  const fc = emptyFC();
+  if (S.overlay) {
+    for (const r of visibleRoutes()) {
+      fc.features.push({
+        type: 'Feature',
+        properties: { name: r.name, color: colorOf(r) },
+        geometry: { type: 'LineString', coordinates: r.stops.map(s => [s.lng, s.lat]) },
+      });
+    }
+  }
+  S.map.getSource('routes-all').setData(fc);
+}
 
 function initMap() {
   S.map = new maplibregl.Map({
@@ -362,7 +426,7 @@ function initMap() {
 
   S.map.on('load', () => {
     installLayers();
-    $('loading').classList.add('hidden');
+    $('loading').hidden = true;
 
     S.map.on('click', 'clusters', e => {
       if (S.composing) return;        // 코스 자동 만들기 중에는 확대 대신 지점을 찍는다
@@ -459,13 +523,22 @@ function renderPanel() {
   $('stat-km').innerHTML = `${fmtKm(total)}<small>km</small>`;
   $('stat-n').textContent = stops.length;
   $('stat-time').innerHTML = `${Math.round(total / PACE_KMH * 60)}<small>분</small>`;
-  $('route-name').value = S.route.name;
+  $('route-title').textContent = S.route.name;
+  if ($('route-name').hidden) $('route-name').value = S.route.name;
   updateDirty();
   updateDeleteButton();
+  syncPalette();
+  queueMicrotask(syncPeekHeight);
 
   if (!stops.length) {
-    list.innerHTML = `<div class="empty">${S.viewer ? '표시할 정류장이 없습니다.'
-      : '지도에서 정류장을 클릭하거나<br><b>코스 자동 만들기</b>로 시작해보세요.'}</div>`;
+    list.innerHTML = S.viewer
+      ? '<div class="empty">표시할 정류장이 없습니다.</div>'
+      : `<div class="empty">
+           지도에서 정류장을 클릭하거나<br>아래 버튼으로 시작해보세요.
+           <button class="btn" id="empty-compose" style="margin-top:16px">✨ 코스 자동 만들기</button>
+         </div>`;
+    const quick = $('empty-compose');
+    if (quick) quick.addEventListener('click', () => setComposing(true));
     return;
   }
 
@@ -535,7 +608,7 @@ function bindPanelEvents() {
     from = null;
   });
 
-  $('route-name').addEventListener('input', e => { S.route.name = e.target.value; });
+
 }
 
 function toggleStop(id) {
@@ -641,9 +714,14 @@ function bindSearch() {
 
 function setComposing(on) {
   S.composing = on;
-  $('compose').classList.toggle('open', on);
-  $('tool-compose').classList.toggle('on', on);
+  $('compose').hidden = !on;
+  $('list').hidden = on || S.overlay;
+  $('routes-list').hidden = on || !S.overlay;
+  $('foot-default').hidden = on;
+  $('foot-compose').hidden = !on;
+  $('tool-compose').textContent = on ? '✕ 자동 만들기 끝내기' : '✨ 코스 자동 만들기';
   S.map.getCanvas().style.cursor = on ? 'crosshair' : '';
+  if (on && innerWidth < 768) setSheet('half');   // 슬라이더가 보이게
   if (!on) clearWaypoints();
 }
 
@@ -707,8 +785,8 @@ function updateComposeUI() {
   $('btn-wp-append').hidden = !had;
   $('btn-wp-append').disabled = n === 0;
   $('compose-status').textContent = S.waypoints.length < 2
-    ? '지도를 클릭해 출발 → 경유 → 도착 순으로 찍으세요 (2개 이상)'
-    : `지점 ${S.waypoints.length}개 · 정류장 ${n}개 · ${fmtKm(km)}km — 지점을 더 찍을수록 실제 도로를 잘 따라갑니다`;
+    ? '출발 → 경유 → 도착 순으로 2곳 이상 찍으면 사이 정류장이 자동으로 채워집니다.'
+    : `지점 ${S.waypoints.length}개 · 정류장 ${n}개 · ${fmtKm(km)}km — 지점을 더 찍을수록 실제 도로를 잘 따라갑니다.`;
 }
 
 function applyWaypoints({ append = false } = {}) {
@@ -740,7 +818,7 @@ function refreshRouteSelect() {
   const items = [{ value: '', label: '새 노선' }];
   if (S.store.routes.length) items.push({ divider: true });
   S.store.routes.forEach(r =>
-    items.push({ value: r.id, label: r.name, meta: `${r.stops.length}개` }));
+    items.push({ value: r.id, label: r.name, meta: `${r.stops.length}개`, color: colorOf(r) }));
   S.pickers.route.setItems(items, false);
   S.pickers.route.setValue(S.route.id || '');
 }
@@ -750,22 +828,31 @@ function loadRoute(id) {
   const r = S.store.routes.find(x => x.id === id);
   if (!r) return;
   snapshot('다른 노선 불러오기');
-  S.route = { id: r.id, name: r.name, region: r.region, stops: r.stops.map(s => ({ ...s })) };
-  renderPanel(); drawRoute({ fit: true }); refreshRouteSelect();
+  S.route = {
+    id: r.id, name: r.name, region: r.region, color: colorOf(r),
+    stops: r.stops.map(s => ({ ...s })),
+  };
+  renderPanel(); repaintRoute(); drawRoute({ fit: true }); refreshRouteSelect();
+  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
 }
 
 function newBlankRoute() {
   if (S.route.stops.length) snapshot('새 노선 시작');
-  S.route = { id: null, name: '새 노선', region: S.region || null, stops: [] };
-  renderPanel(); drawRoute(); refreshRouteSelect();
+  S.route = {
+    id: null, name: '새 노선', region: S.region || null,
+    color: nextColor(S.store), stops: [],
+  };
+  renderPanel(); repaintRoute(); drawRoute(); refreshRouteSelect();
+  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
 }
 
 function saveRoute() {
   if (!S.route.stops.length) return toast('정류장을 먼저 추가하세요');
-  const name = uniqueName(S.store, ($('route-name').value || '새 노선').trim(), S.route.id);
+  const name = uniqueName(S.store, (S.route.name || '새 노선').trim(), S.route.id);
   const route = S.route.id
-    ? { ...S.route, name, stops: S.route.stops, region: S.region || S.route.region }
-    : newRoute(name, S.region || null, S.route.stops);
+    ? { ...S.route, name, stops: S.route.stops, region: S.region || S.route.region,
+        color: currentColor() }
+    : newRoute(name, S.region || null, S.route.stops, currentColor());
   upsertRoute(S.store, route);
   try {
     saveToBrowser(S.store);
@@ -774,6 +861,7 @@ function saveRoute() {
   }
   S.route.id = route.id; S.route.name = name;
   refreshRouteSelect(); renderPanel();
+  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
   toast(`"${name}" 저장됨`);
 }
 
@@ -832,7 +920,7 @@ function importRoutes(file) {
 
 async function shareLink() {
   if (!S.route.stops.length) return toast('정류장을 먼저 추가하세요');
-  const token = await encodeRoute({ name: $('route-name').value || S.route.name, stops: S.route.stops });
+  const token = await encodeRoute({ name: S.route.name, stops: S.route.stops });
   const url = `${location.origin}${location.pathname}?r=${token}`;
   try {
     await navigator.clipboard.writeText(url);
@@ -876,7 +964,8 @@ async function bootRouteFromUrl() {
 function enterViewerMode() {
   S.viewer = true;
   document.body.classList.add('viewer');
-  $('route-name').readOnly = true;
+  if (innerWidth < 768) setSheet('peek');
+  $('rename-btn').hidden = true;
   $('btn-copy-mine').style.display = '';
 }
 
@@ -921,18 +1010,303 @@ function printRoute() {
   w.onload = () => w.print();
 }
 
+/* ───────────────────────── 노선 이름 ───────────────────────── */
+
+function startRename() {
+  const input = $('route-name'), title = $('route-title');
+  input.value = S.route.name;
+  input.hidden = false;
+  title.hidden = true;
+  $('rename-btn').hidden = true;
+  input.focus();
+  input.select();
+}
+
+function endRename({ commit = true } = {}) {
+  const input = $('route-name');
+  if (input.hidden) return;
+
+  if (commit) {
+    const name = input.value.trim();
+    if (name && name !== S.route.name) {
+      if (S.route.id) {
+        const applied = renameRoute(S.store, S.route.id, name);
+        if (applied) {
+          S.route.name = applied;
+          saveToBrowser(S.store);
+          refreshRouteSelect();
+          if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
+          toast(`이름을 "${applied}"로 바꿨습니다`);
+        }
+      } else {
+        S.route.name = name;      // 아직 저장 전인 노선
+      }
+    }
+  }
+
+  input.hidden = true;
+  $('route-title').hidden = false;
+  $('rename-btn').hidden = S.viewer;
+  renderPanel();
+}
+
+function bindRename() {
+  $('rename-btn').addEventListener('click', startRename);
+  $('route-title').addEventListener('click', () => { if (!S.viewer) startRename(); });
+  $('route-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); endRename(); }
+    else if (e.key === 'Escape') { e.preventDefault(); endRename({ commit: false }); }
+  });
+  $('route-name').addEventListener('blur', () => endRename());
+}
+
+/* ───────────────────────── 전체 노선 보기 ───────────────────────── */
+
+function setOverlay(on) {
+  S.overlay = on;
+  $('routes-list').hidden = !on;
+  $('list').hidden = on || S.composing;
+  $('tool-overlay').textContent = on ? '🗺 전체 노선 보기 끄기' : '🗺 전체 노선 보기';
+  if (on) {
+    renderRoutesList();
+    if (innerWidth < 768) setSheet('half');
+  }
+  drawAllRoutes();
+}
+
+/** 지도에 딱 한 개만 보이고 그게 편집 중인 노선이면 그 id를 돌려준다 */
+function soloedRouteId() {
+  const shown = S.store.routes.filter(r => !S.overlayHidden.has(r.id));
+  if (shown.length !== 1) return null;
+  return shown[0].id === S.route.id ? shown[0].id : null;
+}
+
+function renderRoutesList() {
+  const box = $('routes-list');
+  const routes = S.store.routes;
+
+  if (!routes.length) {
+    box.innerHTML = '<div class="routes-empty">저장된 노선이 없습니다.<br>노선을 만들고 저장하면 여기에 모입니다.</div>';
+    return;
+  }
+
+  const soloId = soloedRouteId();
+  const rows = routes.map(r => {
+    const on = !S.overlayHidden.has(r.id);
+    const km = totalDistance(r.stops);
+    const current = r.id === S.route.id ? ' current' : '';
+    const isSolo = soloId === r.id;
+    return `<div class="route-row${current}" data-id="${r.id}">
+      <input type="checkbox" ${on ? 'checked' : ''} data-toggle="${r.id}"
+             aria-label="${escapeHtml(r.name)} 지도에 표시">
+      <span class="dot" style="background:${colorOf(r)}"></span>
+      <span class="rname">${escapeHtml(r.name)}</span>
+      <span class="rmeta">${r.stops.length}개 · ${fmtKm(km)}km</span>
+      <button class="solo${isSolo ? ' on' : ''}" data-solo="${r.id}"
+              title="${isSolo ? '다시 전체 보기' : '이 노선만 보기'}">${isSolo ? '모두' : '이것만'}</button>
+      <button class="rename" data-rename="${r.id}" title="이름 변경">✎</button>
+    </div>`;
+  }).join('');
+
+  const shown = routes.length - S.overlayHidden.size;
+  box.innerHTML = `
+    <div class="routes-head">저장된 노선 ${routes.length}개 · 표시 중 ${shown}개</div>
+    <div class="routes-actions">
+      <button data-all="on">모두 켜기</button>
+      <button data-all="off">모두 끄기</button>
+      <button data-fit="1">전체 맞춤</button>
+    </div>${rows}`;
+}
+
+function fitAllRoutes() {
+  const bounds = new maplibregl.LngLatBounds();
+  let any = false;
+  const add = stops => stops.forEach(s => { bounds.extend([s.lng, s.lat]); any = true; });
+  visibleRoutes().forEach(r => add(r.stops));
+  if (S.route.stops.length) add(S.route.stops);
+  if (!any) return toast('표시할 노선이 없습니다');
+  const narrow = innerWidth < 768;
+  S.map.fitBounds(bounds, {
+    padding: narrow ? { top: 80, bottom: 220, left: 30, right: 30 }
+                    : { top: 110, bottom: 90, left: 80, right: 400 },
+    duration: 700,
+  });
+}
+
+function bindRoutesList() {
+  $('routes-list').addEventListener('click', e => {
+    const all = e.target.closest('[data-all]');
+    if (all) {
+      S.overlayHidden = all.dataset.all === 'off'
+        ? new Set(S.store.routes.map(r => r.id)) : new Set();
+      renderRoutesList(); drawAllRoutes();
+      return;
+    }
+    if (e.target.closest('[data-fit]')) return fitAllRoutes();
+
+    const toggle = e.target.closest('[data-toggle]');
+    if (toggle) {
+      const id = toggle.dataset.toggle;
+      S.overlayHidden.has(id) ? S.overlayHidden.delete(id) : S.overlayHidden.add(id);
+      renderRoutesList(); drawAllRoutes();
+      return;
+    }
+
+    const solo = e.target.closest('[data-solo]');
+    if (solo) {
+      const id = solo.dataset.solo;
+      if (soloedRouteId() === id) {              // 이미 혼자 보고 있으면 전체로 되돌린다
+        S.overlayHidden = new Set();
+        renderRoutesList(); drawAllRoutes();
+        toast('모든 노선을 표시합니다');
+      } else {
+        S.overlayHidden = new Set(S.store.routes.filter(r => r.id !== id).map(r => r.id));
+        if (S.route.id !== id) loadRoute(id);    // 그 노선을 편집 상태로 올려 지도에 띄운다
+        renderRoutesList(); drawAllRoutes();
+        const route = S.store.routes.find(r => r.id === id);
+        if (route) fitToStops(route.stops);
+        toast(`"${route ? route.name : ''}" 만 표시합니다`);
+      }
+      return;
+    }
+
+    const ren = e.target.closest('[data-rename]');
+    if (ren) {
+      const id = ren.dataset.rename;
+      const route = S.store.routes.find(r => r.id === id);
+      const name = prompt('노선 이름', route.name);
+      if (name === null) return;
+      const applied = renameRoute(S.store, id, name);
+      if (!applied) return toast('이름을 입력해주세요');
+      saveToBrowser(S.store);
+      if (S.route.id === id) { S.route.name = applied; renderPanel(); }
+      refreshRouteSelect(); renderRoutesList(); drawAllRoutes();
+      toast(`이름을 "${applied}"로 바꿨습니다`);
+      return;
+    }
+
+    const row = e.target.closest('[data-id]');
+    if (row) { loadRoute(row.dataset.id); renderRoutesList(); }
+  });
+}
+
+function bindPalette() {
+  const box = $('palette');
+  box.innerHTML = ROUTE_COLORS.map(col =>
+    `<button data-color="${col}" style="background:${col}" aria-label="${col}"></button>`).join('');
+
+  $('color-btn').addEventListener('click', () => {
+    box.hidden = !box.hidden;
+    syncPalette();
+  });
+
+  syncPalette();
+
+  box.addEventListener('click', e => {
+    const btn = e.target.closest('[data-color]');
+    if (!btn) return;
+    S.route.color = btn.dataset.color;
+    if (S.route.id) {                       // 저장된 노선이면 색을 바로 저장한다
+      setRouteColor(S.store, S.route.id, S.route.color);
+      saveToBrowser(S.store);
+      if (S.overlay) renderRoutesList();
+    }
+    repaintRoute();
+    syncPalette();
+    box.hidden = true;
+  });
+}
+
+function syncPalette() {
+  if (!$('palette').children.length) return;
+  const col = currentColor();
+  $('palette').querySelectorAll('[data-color]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.color === col)));
+  $('color-btn').style.background = col;
+}
+
+/* ───────────────────────── 더보기 메뉴 ───────────────────────── */
+
+function openMenu() {
+  const menu = $('menu'), btn = $('menu-btn');
+  menu.hidden = false;
+  $('menu-backdrop').hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+  if (innerWidth >= 768) {
+    const r = btn.getBoundingClientRect();
+    menu.style.top = `${r.bottom + 8}px`;
+    menu.style.left = `${Math.max(12, r.right - menu.offsetWidth)}px`;
+  } else {
+    menu.style.top = menu.style.left = '';
+  }
+}
+
+function closeMenu() {
+  $('menu').hidden = true;
+  $('menu-backdrop').hidden = true;
+  $('menu-btn').setAttribute('aria-expanded', 'false');
+}
+
+const isMenuOpen = () => !$('menu').hidden;
+
 /* ───────────────────────── 모바일 바텀시트 ───────────────────────── */
+
+const SHEET_STATES = ['peek', 'half', 'full'];
+
+/** 요약 상태 높이를 머리 영역 실제 높이에 맞춘다 (문구가 잘리지 않게) */
+function syncPeekHeight() {
+  if (innerWidth >= 768) return;
+  const head = document.querySelector('.panel-head');
+  const handle = $('sheet-handle');
+  if (!head || !handle) return;
+  const h = Math.ceil(handle.offsetHeight + head.offsetHeight) + 6;
+  document.documentElement.style.setProperty('--sheet-peek', `${h}px`);
+}
+
+function setSheet(state) {
+  syncPeekHeight();
+  const panel = $('panel');
+  panel.classList.remove('half', 'full');
+  if (state !== 'peek') panel.classList.add(state);
+  S.sheet = state;
+}
 
 function bindSheet() {
   const panel = $('panel');
-  const states = ['', 'half', 'full'];
-  let idx = 0;
-  $('panel').querySelector('.panel-head').addEventListener('click', e => {
+  const handle = $('sheet-handle');
+  if (!handle) return;
+  S.sheet = 'peek';
+
+  // 탭하면 단계를 올리고, 맨 위에서는 다시 내린다
+  handle.addEventListener('click', () => {
     if (innerWidth >= 768) return;
-    if (e.target.closest('input, select, button')) return;
-    idx = (idx + 1) % states.length;
-    panel.classList.remove('half', 'full');
-    if (states[idx]) panel.classList.add(states[idx]);
+    const i = SHEET_STATES.indexOf(S.sheet);
+    setSheet(SHEET_STATES[(i + 1) % SHEET_STATES.length]);
+  });
+
+  // 손가락으로 끌어서 조절
+  let startY = 0, startTop = 0, dragging = false;
+  handle.addEventListener('pointerdown', e => {
+    if (innerWidth >= 768) return;
+    dragging = true; startY = e.clientY;
+    startTop = panel.getBoundingClientRect().top;
+    panel.classList.add('dragging');
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const top = Math.max(innerHeight * 0.12, startTop + (e.clientY - startY));
+    panel.style.transform = `translateY(${top - (innerHeight - panel.offsetHeight)}px)`;
+  });
+  handle.addEventListener('pointerup', e => {
+    if (!dragging) return;
+    dragging = false;
+    panel.classList.remove('dragging');
+    panel.style.transform = '';
+    const moved = e.clientY - startY;
+    const i = SHEET_STATES.indexOf(S.sheet);
+    if (moved < -40) setSheet(SHEET_STATES[Math.min(i + 1, 2)]);
+    else if (moved > 40) setSheet(SHEET_STATES[Math.max(i - 1, 0)]);
   });
 }
 
@@ -941,6 +1315,7 @@ function bindSheet() {
 function bindUI() {
   $('theme-btn').addEventListener('click', () =>
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  $('tool-undo').addEventListener('click', undo);
 
   // 드롭다운은 데이터 로딩 전에 만들어 둔다 (loadStops가 바로 채운다)
   
@@ -950,7 +1325,13 @@ function bindUI() {
   $('btn-copy-mine').addEventListener('click', copyToMine);
 
   $('tool-compose').addEventListener('click', () => setComposing(!S.composing));
+
+  // 더보기 메뉴
+  $('menu-btn').addEventListener('click', () => (isMenuOpen() ? closeMenu() : openMenu()));
+  $('menu-backdrop').addEventListener('click', closeMenu);
+  $('menu').addEventListener('click', e => { if (e.target.closest('button')) closeMenu(); });
   $('tool-new').addEventListener('click', newBlankRoute);
+  $('tool-overlay').addEventListener('click', () => setOverlay(!S.overlay));
   $('tool-delete').addEventListener('click', deleteRoute);
   $('tool-print').addEventListener('click', printRoute);
   $('tool-import').addEventListener('click', () => $('import-file').click());
@@ -962,7 +1343,6 @@ function bindUI() {
   $('gap').addEventListener('input', applyGap);
   $('btn-wp-apply').addEventListener('click', () => applyWaypoints({ append: false }));
   $('btn-wp-append').addEventListener('click', () => applyWaypoints({ append: true }));
-  $('tool-undo').addEventListener('click', undo);
   addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' &&
         !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
@@ -975,10 +1355,14 @@ function bindUI() {
   });
 
   addEventListener('keydown', e => {
-    if (e.key === 'Escape') { clearInsertPoint(); if (S.composing) setComposing(false); }
+    if (e.key !== 'Escape') return;
+    if (isMenuOpen()) return closeMenu();
+    clearInsertPoint();
+    if (S.composing) setComposing(false);
   });
 
-  bindPanelEvents(); bindSearch(); bindSheet();
+  bindPanelEvents(); bindSearch(); bindSheet(); bindRoutesList(); bindPalette(); bindRename();
+  addEventListener('resize', syncPeekHeight);
 }
 
 async function main() {
@@ -1009,7 +1393,7 @@ async function main() {
   bindUI();
   refreshRouteSelect();
   renderPanel();
-  S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex };
+  S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex, setOverlay, fitAllRoutes };
   window.__app = S;   // 스모크 테스트용
 }
 
