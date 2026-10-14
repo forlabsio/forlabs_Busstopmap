@@ -470,8 +470,7 @@ function initMap() {
       S.map.getCanvas().title = e.features[0].properties.name;
     });
 
-    // 공유 링크는 정류장 데이터가 있어야 풀 수 있다
-    S.dataReady.then(bootRouteFromUrl).catch(() => {});
+    bootRouteFromUrl();
   });
 }
 
@@ -691,9 +690,11 @@ function bindSearch() {
     box.classList.add('open');
   };
 
+  input.addEventListener('focus', ensureStops);
   input.addEventListener('input', () => {
     const q = input.value.trim().toLowerCase();
     if (q.length < 2) return close();
+    if (!S.stops.length) { ensureStops(); return close(); }
     const pool = S.region ? S.stops.filter(s => s.city === S.region) : S.stops;
     hits = [];
     for (const s of pool) {
@@ -957,11 +958,12 @@ async function bootRouteFromUrl() {
   const slug = params.get('w');
   if (!token && !slug) return;
 
-  let name = '', ids = [], stops = null;
+  let name = '', ids = [], coords = null, names = null, stops = null;
+
   if (token) {
     const decoded = await decodeRoute(token);
     if (!decoded) return toast('공유 링크를 읽을 수 없습니다');
-    ({ name, ids } = decoded);
+    ({ name, ids, coords, names } = decoded);
   } else {
     try {
       const pub = await fetch(`published/${slug}.json`).then(r => r.json());
@@ -973,13 +975,50 @@ async function bootRouteFromUrl() {
     }
   }
 
-  let missing = [];
-  if (!stops) ({ stops, missing } = resolveIds(ids, S.byId));
-
   enterViewerMode();
-  S.route = { id: null, name, region: null, stops };
+
+  if (!stops && coords) {
+    // 좌표가 링크에 들어 있다 -> 정류장 데이터를 기다리지 않고 바로 그린다
+    stops = ids.map((id, i) => ({
+      id, lat: coords[i].lat, lng: coords[i].lng,
+      name: (names && names[i]) || `정류장 ${i + 1}`,
+    }));
+    S.route = { id: null, name, region: null, color: S.route.color, stops };
+    renderPanel(); drawRoute({ fit: true });
+
+    if (!names) fillNamesWhenReady(ids);       // 이름만 나중에 채운다
+    return;
+  }
+
+  // 좌표가 없는 예전 링크 -> 정류장 데이터가 있어야 푼다
+  if (!stops) {
+    ensureStops();
+    await S.dataReady;
+    const resolved = resolveIds(ids, S.byId);
+    stops = resolved.stops;
+    if (resolved.missing.length) {
+      toast(`정류장 ${resolved.missing.length}개는 현재 데이터에 없어 건너뛰었습니다`, 4000);
+    }
+  }
+
+  S.route = { id: null, name, region: null, color: S.route.color, stops };
   renderPanel(); drawRoute({ fit: true });
-  if (missing.length) toast(`정류장 ${missing.length}개는 현재 데이터에 없어 건너뛰었습니다`, 4000);
+}
+
+/** 이름이 빠진 링크는 데이터가 오면 조용히 채운다 */
+function fillNamesWhenReady(ids) {
+  ensureStops();
+  showDataPending(true, '정류장 이름 불러오는 중…');
+  S.dataReady
+    .then(() => {
+      S.route.stops = S.route.stops.map((s, i) => {
+        const found = S.byId.get(ids[i]);
+        return found ? { ...s, name: found.name } : s;
+      });
+      showDataPending(false);
+      renderPanel();
+    })
+    .catch(() => showDataPending(false));
 }
 
 function enterViewerMode() {
@@ -1386,6 +1425,24 @@ function bindUI() {
   addEventListener('resize', syncPeekHeight);
 }
 
+/** 정류장 데이터를 (아직 안 받았다면) 받기 시작한다 */
+function ensureStops() {
+  if (S.dataReady) return S.dataReady;
+  showDataPending(true, '정류장 불러오는 중…');
+  S.dataReady = loadStops()
+    .then(() => {
+      showDataPending(false);
+      performance.mark('stops-ready');
+      populateStopLayer();
+    })
+    .catch(err => {
+      showDataPending(true, '정류장 데이터를 불러오지 못했습니다');
+      console.error(err);
+      throw err;
+    });
+  return S.dataReady;
+}
+
 function showDataPending(on, msg) {
   const el = $('data-pending');
   if (!el) return;
@@ -1421,18 +1478,8 @@ async function main() {
   refreshRouteSelect();
   renderPanel();
 
-  showDataPending(true, '정류장 불러오는 중…');
-  S.dataReady = loadStops()
-    .then(() => {
-      showDataPending(false);
-      performance.mark('stops-ready');
-      populateStopLayer();
-    })
-    .catch(err => {
-      showDataPending(true, '정류장 데이터를 불러오지 못했습니다');
-      console.error(err);
-      throw err;
-    });
+  // 공유 링크로 들어왔다면 정류장 6만 개는 필요 없을 수도 있다. 필요할 때 받는다.
+  if (!VIEWER_INTENT) ensureStops();
   S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex, setOverlay, fitAllRoutes };
   window.__app = S;   // 스모크 테스트용
 }
