@@ -103,7 +103,7 @@ function toast(msg, ms = 2200) {
  * OS 기본 select 대신 쓰는 드롭다운.
  * items: [{ value, label, meta?, divider? }]
  */
-function createSelect(host, { onChange, placeholder = '선택' } = {}) {
+function createSelect(host, { onChange, placeholder = '선택', allowEmpty = false } = {}) {
   let items = [], value = null, active = -1;
 
   host.innerHTML = `
@@ -202,7 +202,12 @@ function createSelect(host, { onChange, placeholder = '선택' } = {}) {
   return {
     setItems(next, keepValue = true) {
       items = next;
-      if (!keepValue || !items.some(it => it.value === value)) value = items[0]?.value ?? null;
+      const missing = !items.some(it => it.value === value);
+      if (allowEmpty) {
+        if (!keepValue) value = null;          // 고르기 전 상태를 유지한다
+      } else if (!keepValue || missing) {
+        value = items[0]?.value ?? null;
+      }
       renderLabel();
       if (isOpen()) renderMenu();
     },
@@ -995,12 +1000,11 @@ function askEditKey() { openKeyModal(); }
 /* ───────────────────────── 저장 / 불러오기 ───────────────────────── */
 
 function refreshRouteSelect() {
-  const items = [{ value: '', label: '새 노선' }];
-  if (S.store.routes.length) items.push({ divider: true });
-  S.store.routes.forEach(r =>
-    items.push({ value: r.id, label: r.name, meta: `${r.stops.length}개`, color: colorOf(r) }));
+  // "새 노선"은 ⋯ 메뉴에 있으므로 목록에는 저장된 노선만 둔다
+  const items = S.store.routes.map(r =>
+    ({ value: r.id, label: r.name, meta: `${r.stops.length}개`, color: colorOf(r) }));
   S.pickers.route.setItems(items, false);
-  S.pickers.route.setValue(S.route.id || '');
+  S.pickers.route.setValue(S.route.id || null);
 }
 
 function loadRoute(id) {
@@ -1293,6 +1297,133 @@ function bindRename() {
   $('route-name').addEventListener('blur', () => endRename());
 }
 
+/* ───────────────────────── 노선 복사 · 구간 나누기 ───────────────────────── */
+
+let copySource = null;      // 복사 대상 노선
+
+function openCopyModal(routeId) {
+  // 저장된 노선이 대상이지만, 편집 중인 노선도 그대로 복사할 수 있어야 한다
+  const route = S.store.routes.find(r => r.id === routeId)
+    || (S.route.id ? S.store.routes.find(r => r.id === S.route.id) : null)
+    || (S.route.stops.length ? S.route : null);
+
+  if (!route) return toast('복사할 노선이 없습니다. 노선을 고르거나 정류장을 추가하세요', 4000);
+
+  copySource = route;
+  const n = route.stops.length;
+  $('copy-source').textContent =
+    `${route.name} · 정류장 ${n}개 · ${fmtKm(totalDistance(route.stops))}km`;
+  $('copy-name').value = uniqueName(S.store, `${route.name} 사본`);
+  $('copy-from').value = 1;
+  $('copy-from').max = n;
+  $('copy-to').value = n;
+  $('copy-to').max = n;
+  $('copy-half').hidden = n < 4;
+  setCopyMsg('');
+  updateCopyPreview();
+
+  $('copy-modal').hidden = false;
+  $('copy-backdrop').hidden = false;
+  setTimeout(() => $('copy-name').select(), 50);
+}
+
+function closeCopyModal() {
+  $('copy-modal').hidden = true;
+  $('copy-backdrop').hidden = true;
+  copySource = null;
+}
+
+function setCopyMsg(text) {
+  const el = $('copy-msg');
+  el.textContent = text;
+  el.hidden = !text;
+}
+
+/** 입력한 구간을 정리해서 돌려준다 */
+function copyRange() {
+  if (!copySource) return null;
+  const n = copySource.stops.length;
+  let from = Math.max(1, Math.min(n, Number($('copy-from').value) || 1));
+  let to = Math.max(1, Math.min(n, Number($('copy-to').value) || n));
+  if (from > to) [from, to] = [to, from];
+  return { from, to, stops: copySource.stops.slice(from - 1, to) };
+}
+
+function updateCopyPreview() {
+  const r = copyRange();
+  if (!r) return;
+  const n = copySource.stops.length;
+  const whole = r.from === 1 && r.to === n;
+  $('copy-preview').textContent = whole
+    ? `전체 ${n}개 정류장 · ${fmtKm(totalDistance(r.stops))}km`
+    : `${r.from}~${r.to}번 · ${r.stops.length}개 정류장 · ${fmtKm(totalDistance(r.stops))}km`;
+
+  // 구간을 좁히면 이름도 그에 맞게 제안한다
+  const base = copySource.name.replace(/\s*\(\d+~\d+\)$/, '').replace(/\s*사본$/, '');
+  const suggested = whole ? `${base} 사본` : `${base} (${r.from}~${r.to})`;
+  const el = $('copy-name');
+  if (!el.dataset.touched) el.value = uniqueName(S.store, suggested);
+}
+
+async function createCopy(name, stops, { quiet = false } = {}) {
+  const route = newRoute(uniqueName(S.store, name), copySource.region || S.region || null,
+                         stops, nextColor(S.store));
+  upsertRoute(S.store, route);
+  if (!quiet) await persist({ silent: true });
+  return route;
+}
+
+async function confirmCopy() {
+  const r = copyRange();
+  if (!r || !r.stops.length) return setCopyMsg('구간을 다시 확인해주세요');
+
+  const name = $('copy-name').value.trim();
+  if (!name) return setCopyMsg('이름을 넣어주세요');
+
+  setCopyMsg('복사하는 중…');
+  const route = await createCopy(name, r.stops);
+  await persist({ silent: true });
+  closeCopyModal();
+
+  refreshRouteSelect();
+  loadRoute(route.id);
+  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
+  toast(`"${route.name}" 만들었습니다 (정류장 ${r.stops.length}개)`, 4000);
+}
+
+async function splitInHalf() {
+  if (!copySource) return;
+  const stops = copySource.stops;
+  const mid = Math.ceil(stops.length / 2);
+  const base = copySource.name.replace(/\s*\(\d+~\d+\)$/, '').replace(/\s*사본$/, '');
+
+  setCopyMsg('나누는 중…');
+  const first = await createCopy(`${base} 1구간`, stops.slice(0, mid), { quiet: true });
+  const second = await createCopy(`${base} 2구간`, stops.slice(mid), { quiet: true });
+  await persist({ silent: true });
+  closeCopyModal();
+
+  refreshRouteSelect();
+  loadRoute(first.id);
+  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
+  toast(`"${first.name}"(${mid}개)와 "${second.name}"(${stops.length - mid}개)로 나눴습니다`, 5000);
+}
+
+function bindCopy() {
+  $('tool-copy').addEventListener('click', () => openCopyModal(S.route.id));
+  $('copy-cancel').addEventListener('click', closeCopyModal);
+  $('copy-backdrop').addEventListener('click', closeCopyModal);
+  $('copy-save').addEventListener('click', confirmCopy);
+  $('copy-half').addEventListener('click', splitInHalf);
+  $('copy-name').addEventListener('input', e => { e.target.dataset.touched = '1'; });
+  ['copy-from', 'copy-to'].forEach(id =>
+    $(id).addEventListener('input', updateCopyPreview));
+  $('copy-modal').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.id !== 'copy-half') { e.preventDefault(); confirmCopy(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeCopyModal(); }
+  });
+}
+
 /* ───────────────────────── 전체 노선 보기 ───────────────────────── */
 
 function setOverlay(on) {
@@ -1337,6 +1468,7 @@ function renderRoutesList() {
       <span class="rmeta">${r.stops.length}개 · ${fmtKm(km)}km</span>
       <button class="solo${isSolo ? ' on' : ''}" data-solo="${r.id}"
               title="${isSolo ? '다시 전체 보기' : '이 노선만 보기'}">${isSolo ? '모두' : '이것만'}</button>
+      <button class="copy" data-copy="${r.id}" title="복사하거나 구간 나누기">⧉</button>
       <button class="rename" data-rename="${r.id}" title="이름 변경">✎</button>
     </div>`;
   }).join('');
@@ -1403,6 +1535,9 @@ function bindRoutesList() {
       }
       return;
     }
+
+    const cp = e.target.closest('[data-copy]');
+    if (cp) return openCopyModal(cp.dataset.copy);
 
     const ren = e.target.closest('[data-rename]');
     if (ren) {
@@ -1640,7 +1775,7 @@ function bindUI() {
   });
 
   bindPanelEvents(); bindSearch(); bindSheet(); bindRoutesList(); bindPalette(); bindRename();
-  bindPanelToggle();
+  bindPanelToggle(); bindCopy();
   addEventListener('resize', syncPeekHeight);
 }
 
@@ -1684,8 +1819,9 @@ async function main() {
     },
   });
   S.pickers.route = createSelect($('route-picker'), {
-    placeholder: '새 노선',
-    onChange: id => loadRoute(id),
+    placeholder: '노선 선택',
+    allowEmpty: true,
+    onChange: id => { if (id) loadRoute(id); },
   });
   S.editKey = getEditKey();
   S.store = loadFromBrowser();          // 서버 응답 전까지 사본으로 먼저 보여준다
@@ -1701,7 +1837,7 @@ async function main() {
   // 공유 링크로 들어왔다면 정류장 6만 개는 필요 없을 수도 있다. 필요할 때 받는다.
   if (!VIEWER_INTENT) ensureStops();
   if (!VIEWER_INTENT) loadStoreFromServer();
-  S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex, setOverlay, fitAllRoutes };
+  S.api = { toggleStop, undo, setInsertPoint, bestInsertIndex, setOverlay, fitAllRoutes, loadRoute };
   window.__app = S;   // 스모크 테스트용
 }
 

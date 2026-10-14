@@ -90,9 +90,14 @@ export function uniqueName(store, name, exceptId = null) {
   return `${name} (${n})`;
 }
 
+/** 같은 밀리초에 여러 개를 만들어도 겹치지 않는 id */
+function newId() {
+  return `route-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export function newRoute(name, region, stops, color = ROUTE_COLORS[0]) {
   return {
-    id: `route-${Date.now()}`,
+    id: newId(),
     name,
     region: region || null,
     color,

@@ -510,3 +510,32 @@ body.viewer .viewer-badge { display: inline-flex; }
   .modal { top: auto; bottom: 16px; transform: translate(-50%, 0); }
   .modal input { height: 52px; }
 }
+
+/* ───── 노선 복사 모달 ───── */
+.modal--wide { width: min(440px, calc(100vw - 32px)); }
+.modal .field { display: block; margin-bottom: 16px; }
+.modal .field > span {
+  display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 7px;
+}
+.modal .field input[type="text"] { height: 46px; font-size: 15px; letter-spacing: 0; }
+.range-row { display: flex; align-items: center; gap: 8px; }
+.range-row input[type="number"] {
+  width: 84px; height: 44px; text-align: center; font-size: 16px; font-weight: 700;
+  border: 1px solid var(--border); border-radius: var(--r-btn); background: var(--surface);
+  color: var(--fg); outline: 0; letter-spacing: 0;
+}
+.range-row input[type="number"]:focus { border-color: var(--primary); background: var(--canvas); }
+.range-row em { font-style: normal; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.copy-preview {
+  margin-top: 10px; font-size: 12.5px; font-weight: 600; color: var(--primary);
+  background: var(--tint); border-radius: 9px; padding: 9px 12px;
+}
+#copy-source { color: var(--body); font-weight: 600; }
+
+/* 전체 노선 목록의 복사 버튼 */
+.route-row .copy {
+  border: 0; background: none; color: var(--muted); font-size: 13px; padding: 3px 5px; opacity: 0;
+}
+.route-row:hover .copy { opacity: 1; }
+.route-row .copy:hover { color: var(--primary); }
+@media (max-width: 767px) { .route-row .copy { opacity: 1; padding: 6px 8px; } }

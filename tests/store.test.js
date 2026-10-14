@@ -59,7 +59,7 @@ test('직렬화 왕복이 정류장 수를 보존한다', () => {
 test('newRoute: 필요한 필드만 남긴다', () => {
   const r = newRoute('테스트', '서울특별시', [{ id: 'A', name: '가', lat: 37.5, lng: 127, extra: '버려짐' }]);
   assert.deepEqual(r.stops, [{ id: 'A', name: '가', lat: 37.5, lng: 127 }]);
-  assert.match(r.id, /^route-\d+$/);
+  assert.match(r.id, /^route-\d+-[a-z0-9]+$/);
   assert.ok(r.createdAt);
 });
 
@@ -104,4 +104,23 @@ test('기존 백업에는 color가 없어도 그대로 읽힌다 (하위 호환)
   const store = parseStore(raw);
   assert.ok(store.routes.every(r => r.stops.length > 0));
   assert.ok(store.routes.every(r => ROUTE_COLORS.includes(colorOf(r))));
+});
+
+test('newRoute: 연속으로 만들어도 id가 겹치지 않는다', () => {
+  // 절반 나누기처럼 같은 밀리초에 두 개를 만들면 예전 방식은 id가 같아
+  // 두 번째가 첫 번째를 덮어썼다.
+  const ids = new Set();
+  for (let i = 0; i < 200; i++) {
+    ids.add(newRoute(`노선 ${i}`, null, [{ id: 'A', name: '가', lat: 37.5, lng: 127 }]).id);
+  }
+  assert.equal(ids.size, 200);
+});
+
+test('upsertRoute: 한 번에 만든 두 노선이 모두 남는다', () => {
+  const store = { routes: [] };
+  const stops = [{ id: 'A', name: '가', lat: 37.5, lng: 127 }];
+  upsertRoute(store, newRoute('1구간', null, stops));
+  upsertRoute(store, newRoute('2구간', null, stops));
+  assert.equal(store.routes.length, 2);
+  assert.deepEqual(store.routes.map(r => r.name), ['1구간', '2구간']);
 });

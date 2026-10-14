@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <script src="vendor/maplibre-gl.js"></script>
 
-<link rel="stylesheet" href="src/theme.css?v=20261014163608">
+<link rel="stylesheet" href="src/theme.css?v=20261014170429">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 </head>
 <body>
@@ -130,6 +130,10 @@
     <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
     <span>새 노선</span>
   </button>
+  <button role="menuitem" id="tool-copy">
+    <svg viewBox="0 0 24 24"><path d="M9 9h10v10H9z"/><path d="M5 15V5h10"/></svg>
+    <span>노선 복사·나누기</span>
+  </button>
 
   <div class="menu-group">보기</div>
   <button role="menuitem" id="tool-overlay" aria-pressed="false">
@@ -182,6 +186,39 @@
   </div>
 </div>
 
+<!-- 노선 복사 / 구간 나누기 -->
+<div class="modal-backdrop" id="copy-backdrop" hidden></div>
+<div class="modal modal--wide" id="copy-modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="copy-title">
+  <h3 id="copy-title">노선 복사</h3>
+  <p id="copy-source">원본</p>
+
+  <label class="field">
+    <span>새 이름</span>
+    <input id="copy-name" type="text" autocomplete="off" spellcheck="false">
+  </label>
+
+  <div class="field">
+    <span>가져올 구간</span>
+    <div class="range-row">
+      <input id="copy-from" type="number" min="1" inputmode="numeric">
+      <em>번 부터</em>
+      <input id="copy-to" type="number" min="1" inputmode="numeric">
+      <em>번 까지</em>
+    </div>
+    <input id="copy-slider" type="range" min="1" max="2" value="2" class="copy-slider" hidden>
+    <div class="copy-preview" id="copy-preview">전체 구간</div>
+  </div>
+
+  <div class="modal-msg" id="copy-msg" hidden></div>
+
+  <div class="modal-actions">
+    <button class="btn ghost" id="copy-half">절반씩 둘로 나누기</button>
+    <button class="btn ghost" id="copy-cancel">취소</button>
+    <button class="btn" id="copy-save">복사</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="loading" id="loading">
@@ -191,6 +228,6 @@
   </div>
 </div>
 
-<script type="module" src="src/app.js?v=20261014163608"></script>
+<script type="module" src="src/app.js?v=20261014170429"></script>
 </body>
 </html>

@@ -294,9 +294,10 @@ def main():
       return pts[0].properties.edge === true && pts.at(-1).properties.edge === true
           && pts.slice(1, -1).every(f => f.properties.edge === false);
     })()"""))
+    cur_len = p.ev("__app.route.stops.length") or 0
     check('목록 번호가 지도와 같은 1..N',
           p.ev("Array.from(document.querySelectorAll('#list .num')).map(e => e.textContent).join(',')")
-          == ','.join(str(i + 1) for i in range(n_route or 0)))
+          == ','.join(str(i + 1) for i in range(cur_len)), f'{cur_len}개 기준')
     check('출발/골인 꼬리표 표시',
           p.ev("Array.from(document.querySelectorAll('#list .edge-tag')).map(e => e.textContent).join('/')")
           == '출발/골인')
@@ -534,6 +535,87 @@ def main():
     p.ev("document.getElementById('tool-overlay').click()")   # 전체 보기 끄기
     time.sleep(0.6)
     check('전체 보기를 끄면 목록이 닫힘', p.ev("document.getElementById('routes-list').hidden"))
+
+    print('\n== 노선 복사 · 구간 나누기 ==')
+    # 어떤 노선이 열려 있든, 가장 긴 저장 노선을 직접 불러와 기준을 고정한다
+    p.ev("""(() => {
+      const longest = [...__app.store.routes].sort((a, b) => b.stops.length - a.stops.length)[0];
+      if (longest) __app.api.loadRoute(longest.id);
+    })()""")
+    time.sleep(2.5)
+    check('복사 대상 노선이 열림', (p.ev("__app.route.id") or '') != '',
+          p.ev("__app.route.name"))
+    base_count = p.ev("__app.store.routes.length")
+    src_len = p.ev("__app.route.stops.length")
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-copy').click()")
+    time.sleep(1)
+    check('복사 창이 뜸', p.ev("!document.getElementById('copy-modal').hidden"))
+    check('원본 정보를 보여줌', '정류장' in (p.ev("document.getElementById('copy-source').textContent") or ''),
+          p.ev("document.getElementById('copy-source').textContent"))
+    check('기본 구간은 전체', p.ev("document.getElementById('copy-to').value") == str(src_len),
+          p.ev("document.getElementById('copy-from').value + '~' + document.getElementById('copy-to').value"))
+
+    # 앞 10개만 잘라 복사
+    p.ev("""(() => {
+      const to = document.getElementById('copy-to');
+      to.value = 10; to.dispatchEvent(new Event('input', {bubbles:true}));
+    })()""")
+    time.sleep(0.6)
+    check('구간을 줄이면 미리보기가 따라감',
+          '10개' in (p.ev("document.getElementById('copy-preview').textContent") or ''),
+          p.ev("document.getElementById('copy-preview').textContent"))
+    check('이름도 구간에 맞게 제안됨',
+          '~10' in (p.ev("document.getElementById('copy-name').value") or ''),
+          p.ev("document.getElementById('copy-name').value"))
+    p.ev("document.getElementById('copy-save').click()")
+    time.sleep(3)
+    check('노선이 하나 늘어남', p.ev("__app.store.routes.length") == (base_count or 0) + 1,
+          p.ev("__app.store.routes.length"))
+    check('복사본이 10개 정류장으로 열림', p.ev("__app.route.stops.length") == 10,
+          p.ev("__app.route.stops.length"))
+    check('원본은 그대로', p.ev(f"""(() => {{
+      const src = __app.store.routes.find(r => r.stops.length === {src_len});
+      return !!src;
+    }})()"""))
+
+    # 절반으로 나누기
+    p.ev(f"""(() => {{
+      const src = __app.store.routes.find(r => r.stops.length === {src_len});
+      if (src) __app.api.loadRoute(src.id);
+    }})()""")
+    time.sleep(2.5)
+    before_half = p.ev("__app.store.routes.length")
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-copy').click()")
+    time.sleep(1)
+    p.ev("document.getElementById('copy-half').click()")
+    grew = p.wait_for(f"__app.store.routes.length === {(before_half or 0) + 2}", 20, '절반 나누기')
+    check('절반 나누기로 2개가 생김', grew,
+          f'{before_half} -> {p.ev("__app.store.routes.length")}')
+    check('두 구간 합이 원본과 같음', p.ev(f"""(() => {{
+      const rs = __app.store.routes.filter(r => /1구간|2구간/.test(r.name));
+      if (rs.length !== 2) return false;
+      return rs[0].stops.length + rs[1].stops.length === {src_len};
+    }})()"""))
+    check('나눈 뒤 1구간이 열림', '1구간' in (p.ev("__app.route.name") or ''),
+          p.ev("__app.route.name"))
+
+    # 이 섹션이 노선을 늘리고 다른 노선을 열어둔다. 뒤 검사를 위해 원래 상태로 되돌린다.
+    p.ev(f"localStorage.setItem('marathon-routes', {json.dumps(backup)})")
+    p.ev('location.reload()')
+    time.sleep(2)
+    p.ready()
+    p.ev("window.confirm = () => true; window.alert = () => {};")
+    p.ev(f"""(() => {{
+      const src = __app.store.routes.find(r => r.stops.length === {src_len});
+      if (src) __app.api.loadRoute(src.id);
+    }})()""")
+    time.sleep(2)
+    check('검사 후 원래 노선으로 복귀', p.ev('__app.route.stops.length') == src_len,
+          p.ev('__app.route.stops.length'))
 
     print('\n== 실수 복구 (되돌리기 / 이어붙이기) ==')
     # 거점을 찍어 자동 채우기 -> 기존 190개에 "이어 붙이기"
