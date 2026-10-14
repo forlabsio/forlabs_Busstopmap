@@ -1,0 +1,9 @@
+{
+  "name": "marathon-route-manager",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/",
+    "build": "python3 build.py"
+  }
+}
