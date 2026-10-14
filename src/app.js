@@ -221,7 +221,10 @@ function applyTheme(mode, { redraw = true } = {}) {
   localStorage.setItem('route-theme', mode);
 
   const btn = $('theme-btn');
-  if (btn) btn.setAttribute('aria-pressed', String(mode === 'dark'));
+  if (btn) {
+    btn.setAttribute('aria-pressed', String(mode === 'dark'));
+    btn.title = mode === 'dark' ? '밝은 테마로 전환' : '어두운 테마로 전환';
+  }
   if (redraw && S.map) {
     S.map.setStyle(BASEMAP[mode]);
     S.map.once('styledata', () => { installLayers(); drawRoute(); drawPreview(); drawAllRoutes(); });
@@ -1389,7 +1392,10 @@ function bindUI() {
   // 더보기 메뉴
   $('menu-btn').addEventListener('click', () => (isMenuOpen() ? closeMenu() : openMenu()));
   $('menu-backdrop').addEventListener('click', closeMenu);
-  $('menu').addEventListener('click', e => { if (e.target.closest('button')) closeMenu(); });
+  $('menu').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (btn && btn.id !== 'theme-btn') closeMenu();   // 테마는 켠 채로 확인할 수 있게 둔다
+  });
   $('tool-new').addEventListener('click', newBlankRoute);
   $('tool-overlay').addEventListener('click', () => setOverlay(!S.overlay));
   $('tool-delete').addEventListener('click', deleteRoute);

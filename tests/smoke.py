@@ -197,16 +197,24 @@ def main():
     check('메뉴 열림', p.ev("!document.getElementById('menu').hidden"))
     items = p.ev("Array.from(document.querySelectorAll('#menu button')).map(b => b.id).join(',')")
     check('메뉴가 그룹으로 나뉘어 있음',
-          (p.ev("Array.from(document.querySelectorAll('#menu .menu-group')).map(e=>e.textContent).join('/')") or '')
+          (p.ev("Array.from(document.querySelectorAll('#menu .menu-group')).map(e=>e.textContent.trim()).join('/')") or '')
           == '만들기/보기/파일',
-          p.ev("Array.from(document.querySelectorAll('#menu .menu-group')).map(e=>e.textContent).join('/')"))
-    check('모든 항목에 같은 종류의 아이콘',
-          p.ev("document.querySelectorAll('#menu button svg').length")
-          == p.ev("document.querySelectorAll('#menu button').length"),
-          f"{p.ev(chr(34)+'document.querySelectorAll(' + chr(39) + '#menu button svg' + chr(39) + ').length'+chr(34))}개")
+          p.ev("Array.from(document.querySelectorAll('#menu .menu-group')).map(e=>e.textContent.trim()).join('/')"))
+    check('모든 항목에 아이콘이 있음', p.ev("""(() => {
+      const items = Array.from(document.querySelectorAll('#menu button[role=menuitem]'));
+      return items.length > 0 && items.every(b => b.querySelector('svg'));
+    })()"""))
+    check('테마 토글이 머리줄 오른쪽 아이콘으로 분리됨', p.ev("""(() => {
+      const t = document.getElementById('theme-btn');
+      const head = document.querySelector('#menu .menu-group--head');
+      if (!t || !head || !head.contains(t)) return false;
+      const hb = head.getBoundingClientRect(), tb = t.getBoundingClientRect();
+      return tb.right <= hb.right + 1 && tb.left > hb.left + hb.width / 2;
+    })()"""))
     check('메뉴에 관리 기능이 모여 있음',
-          all(k in (items or '') for k in ['tool-compose', 'tool-new', 'btn-export', 'tool-import',
-                                           'tool-print', 'theme-btn', 'tool-delete']), items)
+          all(k in (items or '') for k in ['tool-compose', 'tool-new', 'tool-overlay',
+                                           'btn-export', 'tool-import', 'tool-print',
+                                           'tool-delete']), items)
     if not MOBILE:
         check('메뉴가 ⋯ 버튼 아래에 뜸', p.ev("""(() => {
           const b = document.getElementById('menu-btn').getBoundingClientRect();
@@ -594,7 +602,8 @@ def main():
     after = p.ev("document.documentElement.dataset.theme")
     p.shot(f'{TMP}/smoke-{"mobile" if MOBILE else "desktop"}-{after}.png')
     check('테마 토글', before != after and after in ('light', 'dark'), f'{before} -> {after}')
-    check('테마 메뉴가 현재 상태를 체크로 표시',
+    check('테마를 눌러도 메뉴가 열려 있음', p.ev("!document.getElementById('menu').hidden"))
+    check('테마 아이콘이 현재 상태를 표시',
           p.ev("document.getElementById('theme-btn').getAttribute('aria-pressed')")
           == ('true' if after == 'dark' else 'false'),
           p.ev("document.getElementById('theme-btn').getAttribute('aria-pressed')"))

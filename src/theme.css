@@ -231,27 +231,45 @@ button { cursor: pointer; }
   padding: 10px 11px 5px;
 }
 .menu-group:first-child { padding-top: 6px; }
-.menu button {
+.menu-group--head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding-top: 4px; padding-right: 4px;
+}
+.menu-icon {
+  border: 0; background: none; padding: 5px; border-radius: 8px; display: grid; place-items: center;
+  flex: 0 0 auto; width: auto;
+}
+.menu-icon svg {
+  width: 17px; height: 17px; fill: none; stroke: var(--muted);
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.menu-icon:hover { background: var(--surface); }
+.menu-icon:hover svg { stroke: var(--primary); }
+.menu-icon[aria-pressed="true"] svg { stroke: var(--primary); }
+.menu-icon .i-sun { display: none; }
+.menu-icon[aria-pressed="true"] .i-sun { display: block; }
+.menu-icon[aria-pressed="true"] .i-moon { display: none; }
+.menu button[role="menuitem"] {
   display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 11px; border: 0;
   background: none; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--fg); text-align: left;
 }
-.menu button svg {
+.menu button[role="menuitem"] svg {
   width: 17px; height: 17px; flex: 0 0 auto; fill: none; stroke: var(--muted);
   stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
-.menu button span { flex: 1; }
-.menu button:hover { background: var(--surface); }
-.menu button:hover svg { stroke: var(--primary); }
+.menu button[role="menuitem"] span { flex: 1; }
+.menu button[role="menuitem"]:hover { background: var(--surface); }
+.menu button[role="menuitem"]:hover svg { stroke: var(--primary); }
 .menu-check { font-size: 12px; color: var(--primary); opacity: 0; font-style: normal; }
-.menu button[aria-pressed="true"] { color: var(--primary); }
-.menu button[aria-pressed="true"] svg { stroke: var(--primary); }
-.menu button[aria-pressed="true"] .menu-check { opacity: 1; }
-.menu button.danger { color: var(--danger); }
-.menu button.danger svg { stroke: var(--danger); }
-.menu button.danger:hover { background: var(--surface); }
-.menu button.danger:hover svg { stroke: var(--danger); }
-.menu button[disabled] { opacity: .4; cursor: not-allowed; }
-.menu button[disabled]:hover { background: none; }
+.menu button[role="menuitem"][aria-pressed="true"] { color: var(--primary); }
+.menu button[role="menuitem"][aria-pressed="true"] svg { stroke: var(--primary); }
+.menu button[role="menuitem"][aria-pressed="true"] .menu-check { opacity: 1; }
+.menu button[role="menuitem"].danger { color: var(--danger); }
+.menu button[role="menuitem"].danger svg { stroke: var(--danger); }
+.menu button[role="menuitem"].danger:hover { background: var(--surface); }
+.menu button[role="menuitem"].danger:hover svg { stroke: var(--danger); }
+.menu button[role="menuitem"][disabled] { opacity: .4; cursor: not-allowed; }
+.menu button[role="menuitem"][disabled]:hover { background: none; }
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 6px 7px; }
 
 /* ───── 지도 위 라벨 ───── */
@@ -343,8 +361,10 @@ body.viewer .viewer-badge { display: inline-flex; }
     animation: sheet-up .2s cubic-bezier(.32, .72, 0, 1);
   }
   @keyframes sheet-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-  .menu button { padding: 13px 12px; font-size: 15px; }
-  .menu button svg { width: 19px; height: 19px; }
+  .menu button[role="menuitem"] { padding: 13px 12px; font-size: 15px; }
+  .menu button[role="menuitem"] svg { width: 19px; height: 19px; }
+  .menu-icon { padding: 8px; }
+  .menu-icon svg { width: 20px; height: 20px; }
 
   .toast { bottom: auto; top: 68px; }
   .pin { font-size: 11px; padding: 4px 9px 4px 7px; }
