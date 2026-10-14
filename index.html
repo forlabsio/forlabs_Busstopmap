@@ -6,10 +6,17 @@
 <title>마라톤 노선 관리</title>
 <meta name="description" content="전국 버스정류장으로 마라톤 코스를 만들고 공유합니다">
 <meta name="theme-color" content="#3182f6">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<!-- 지도 타일 서버에 미리 연결해 둔다 (모바일에서 왕복 시간이 크다) -->
+<link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin>
+<link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin>
+<link rel="dns-prefetch" href="https://tiles.basemaps.cartocdn.com">
+
+<!-- 지도 엔진은 같은 출처에서 받는다 (외부 CDN 왕복 제거) -->
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+
 <link rel="stylesheet" href="src/theme.css">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 </head>
 <body>
 
