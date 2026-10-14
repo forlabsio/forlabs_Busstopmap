@@ -457,10 +457,19 @@ def main():
       return pts.length > 0 && pts.every(f => typeof f.properties.n === 'number')
           && pts.every(f => !!f.properties.color);
     })()"""))
-    check('노선마다 다른 색', p.ev("""(() => {
-      const dots = Array.from(document.querySelectorAll('#routes-list .dot'))
-        .map(d => d.style.background);
-      return new Set(dots).size === dots.length;
+    # 색은 사용자가 고르는 값이라 겹칠 수 있다. 목록 점이 각 노선의 색과 맞는지만 본다.
+    check('목록의 색 점이 각 노선 색과 일치', p.ev("""(() => {
+      const toRgb = hex => {
+        const h = hex.replace('#','');
+        return 'rgb(' + [0,2,4].map(i => parseInt(h.slice(i,i+2),16)).join(', ') + ')';
+      };
+      return Array.from(document.querySelectorAll('#routes-list .route-row')).every(row => {
+        const r = __app.store.routes.find(x => x.id === row.dataset.id);
+        if (!r) return false;
+        const bg = row.querySelector('.dot').style.background;
+        const want = r.color || '';
+        return !want || bg === toRgb(want) || bg === want;
+      });
     })()"""))
 
     p.ev("""(() => {

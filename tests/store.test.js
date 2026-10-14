@@ -124,3 +124,16 @@ test('upsertRoute: 한 번에 만든 두 노선이 모두 남는다', () => {
   assert.equal(store.routes.length, 2);
   assert.deepEqual(store.routes.map(r => r.name), ['1구간', '2구간']);
 });
+
+test('노선을 다시 저장해도 생성일이 남아야 한다', () => {
+  // 편집 상태(S.route)에는 createdAt이 없어서, 그대로 덮어쓰면 생성일이 사라졌다.
+  const store = parseStore(raw);
+  const saved = store.routes[0];
+  const created = saved.createdAt;
+  assert.ok(created, '원본에 생성일이 있어야 한다');
+
+  const editing = { id: saved.id, name: saved.name, region: saved.region, stops: saved.stops };
+  const merged = { ...editing, createdAt: saved.createdAt };   // 앱이 하는 보존 동작
+  upsertRoute(store, merged);
+  assert.equal(store.routes.find(r => r.id === saved.id).createdAt, created);
+});

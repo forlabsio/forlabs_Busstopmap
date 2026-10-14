@@ -1033,9 +1033,12 @@ function newBlankRoute() {
 function saveRoute() {
   if (!S.route.stops.length) return toast('정류장을 먼저 추가하세요');
   const name = uniqueName(S.store, (S.route.name || '새 노선').trim(), S.route.id);
+  const existing = S.route.id ? S.store.routes.find(r => r.id === S.route.id) : null;
   const route = S.route.id
     ? { ...S.route, name, stops: S.route.stops, region: S.region || S.route.region,
-        color: currentColor() }
+        color: currentColor(),
+        // 편집 상태에는 생성일이 없다. 저장본의 값을 지켜준다.
+        createdAt: (existing && existing.createdAt) || new Date().toISOString() }
     : newRoute(name, S.region || null, S.route.stops, currentColor());
   upsertRoute(S.store, route);
   persist();
