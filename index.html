@@ -59,7 +59,7 @@
 
 <!-- 거점 모드 -->
 <div class="compose" id="compose">
-  <h4>거점을 찍으면 사이 정류장이 자동으로 채워집니다</h4>
+  <h4>지점을 찍으면 사이 정류장이 자동으로 채워집니다</h4>
   <p id="compose-status">지도를 클릭해 출발 → 경유 → 도착 순으로 찍으세요 (2개 이상)</p>
   <div class="slider-row">
     <label for="gap">정류장 간격</label>
@@ -67,8 +67,8 @@
     <output id="gap-out">250m</output>
   </div>
   <div class="compose-actions">
-    <button class="btn ghost" id="btn-wp-undo">되돌리기</button>
-    <button class="btn ghost" id="btn-wp-clear">거점 지우기</button>
+    <button class="btn ghost" id="btn-wp-undo">마지막 지점 취소</button>
+    <button class="btn ghost" id="btn-wp-clear">전부 지우기</button>
     <button class="btn ghost" id="btn-wp-append" disabled hidden>뒤에 이어 붙이기</button>
     <button class="btn" id="btn-wp-apply" disabled>이대로 확정</button>
   </div>
@@ -76,12 +76,14 @@
 
 <!-- 하단 툴바 -->
 <div class="toolbar">
-  <button class="tool" id="tool-compose">✛ 거점 찍기</button>
-  <button class="tool" id="tool-undo">↩ 실행 취소</button>
-  <button class="tool" id="tool-new">+ 새 노선</button>
-  <button class="tool" id="tool-import">📂 불러오기</button>
-  <button class="tool" id="tool-print">⎙ 인쇄</button>
-  <button class="tool" id="tool-delete">🗑 삭제</button>
+  <button class="tool" id="tool-compose"
+          title="지도에서 출발·경유·도착을 찍으면 그 사이 정류장을 자동으로 채웁니다">✨ 코스 자동 만들기</button>
+  <button class="tool" id="tool-undo" title="마지막 편집을 되돌립니다 (⌘Z)">↩ 실행 취소</button>
+  <button class="tool" id="tool-new" title="빈 노선에서 새로 시작합니다">+ 새 노선</button>
+  <button class="tool" id="tool-import" title="내보내기로 받아둔 JSON 파일에서 노선을 가져옵니다">📂 파일에서 가져오기</button>
+  <button class="tool" id="tool-print" title="지도와 정류장 목록을 인쇄합니다">⎙ 인쇄</button>
+  <button class="tool tool-danger" id="tool-delete"
+          title="지금 불러온 노선을 저장소에서 영구 삭제합니다">🗑 이 노선 삭제</button>
 </div>
 
 <input type="file" id="import-file" accept="application/json,.json" hidden>

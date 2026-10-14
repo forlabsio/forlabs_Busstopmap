@@ -365,7 +365,7 @@ function initMap() {
     $('loading').classList.add('hidden');
 
     S.map.on('click', 'clusters', e => {
-      if (S.composing) return;        // 거점 모드에서는 확대 대신 거점을 찍는다
+      if (S.composing) return;        // 코스 자동 만들기 중에는 확대 대신 지점을 찍는다
       const f = e.features[0];
       S.map.getSource('stops').getClusterExpansionZoom(f.properties.cluster_id).then(z => {
         S.map.easeTo({ center: f.geometry.coordinates, zoom: z });
@@ -461,10 +461,11 @@ function renderPanel() {
   $('stat-time').innerHTML = `${Math.round(total / PACE_KMH * 60)}<small>분</small>`;
   $('route-name').value = S.route.name;
   updateDirty();
+  updateDeleteButton();
 
   if (!stops.length) {
     list.innerHTML = `<div class="empty">${S.viewer ? '표시할 정류장이 없습니다.'
-      : '지도에서 정류장을 클릭하거나<br><b>거점 찍기</b>로 코스를 만들어보세요.'}</div>`;
+      : '지도에서 정류장을 클릭하거나<br><b>코스 자동 만들기</b>로 시작해보세요.'}</div>`;
     return;
   }
 
@@ -707,7 +708,7 @@ function updateComposeUI() {
   $('btn-wp-append').disabled = n === 0;
   $('compose-status').textContent = S.waypoints.length < 2
     ? '지도를 클릭해 출발 → 경유 → 도착 순으로 찍으세요 (2개 이상)'
-    : `거점 ${S.waypoints.length}개 · 정류장 ${n}개 · ${fmtKm(km)}km — 거점을 더 찍으면 도로를 더 잘 따라갑니다`;
+    : `지점 ${S.waypoints.length}개 · 정류장 ${n}개 · ${fmtKm(km)}km — 지점을 더 찍을수록 실제 도로를 잘 따라갑니다`;
 }
 
 function applyWaypoints({ append = false } = {}) {
@@ -721,7 +722,7 @@ function applyWaypoints({ append = false } = {}) {
     if (!ok) return;
   }
 
-  snapshot(append ? '거점 이어 붙이기' : '거점으로 교체');
+  snapshot(append ? '자동 코스 이어 붙이기' : '자동 코스로 교체');
   S.route.stops = append
     ? S.route.stops.concat(S.preview.map(s => ({ ...s })))
     : S.preview.map(s => ({ ...s }));
@@ -777,12 +778,23 @@ function saveRoute() {
 }
 
 function deleteRoute() {
-  if (!S.route.id) return toast('저장된 노선이 아닙니다');
-  if (!confirm(`"${S.route.name}" 노선을 삭제할까요?`)) return;
+  if (!S.route.id) return toast('저장된 노선을 먼저 불러오세요');
+  const target = S.store.routes.find(r => r.id === S.route.id);
+  const count = target ? target.stops.length : S.route.stops.length;
+  const ok = confirm(
+    `저장된 노선 "${S.route.name}"(정류장 ${count}개)을 지웁니다.\n\n` +
+    `되돌릴 수 없습니다. 필요하면 먼저 "내보내기"로 백업하세요.`);
+  if (!ok) return;
   removeRoute(S.store, S.route.id);
   saveToBrowser(S.store);
   newBlankRoute();
-  toast('삭제되었습니다');
+  toast('저장된 노선을 삭제했습니다');
+}
+
+/** 지울 저장 노선이 없으면 삭제 버튼을 비활성화한다 */
+function updateDeleteButton() {
+  const btn = $('tool-delete');
+  if (btn) btn.disabled = !S.route.id;
 }
 
 function exportRoutes() {

@@ -355,3 +355,7 @@ body.viewer #route-picker { display: none !important; }
   flex: 0 0 auto; padding: 1px 7px; border-radius: var(--r-chip);
   background: var(--tint); color: var(--tint-fg); font-size: 10px; font-weight: 700;
 }
+
+.tool[disabled] { opacity: .4; cursor: not-allowed; }
+.tool[disabled]:hover { background: transparent; }
+.tool-danger:not([disabled]):hover { background: var(--surface); color: var(--danger); }
