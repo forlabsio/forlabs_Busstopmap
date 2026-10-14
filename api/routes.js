@@ -1,29 +1,54 @@
-// 노선 저장소 — Vercel Blob에 문서 하나로 보관한다.
+// 노선 저장소 — Vercel Blob
 //   GET  /api/routes            모든 노선을 읽는다 (누구나)
+//   GET  /api/routes?check=1    편집 키 확인
 //   PUT  /api/routes            노선을 저장한다 (x-edit-key 필요)
-// 동시에 두 기기에서 고치는 사고를 막기 위해 version을 함께 쓴다.
-import { put, head } from '@vercel/blob';
+//
+// 같은 경로를 덮어쓰면 메타데이터는 바로 바뀌는데 본문 전파가 늦어
+// 저장 직후 읽기가 옛 내용을 돌려준다(실측 10초 이상). 그래서 저장할 때마다
+// routes/<판번호>.json 이라는 "새 경로"를 쓴다. 새 경로에는 옛 사본이 없으므로
+// 항상 방금 쓴 내용이 그대로 읽힌다. 오래된 판은 몇 개만 남기고 지운다.
+import { put, list, del } from '@vercel/blob';
 
-const KEY = 'routes.json';
-const EMPTY = { routes: [], version: 0 };
+const PREFIX = 'routes/';
+const KEEP = 5;
 
-/**
- * Blob 공개 URL은 CDN에 캐시된다. 판 번호만 바꿔서는 부족했다.
- * 저장 직후 읽으면 "새 판 번호 + 옛 본문"이 그 키에 캐시되어 한동안 남는다.
- * 그래서 매 요청마다 다른 값을 붙여 캐시를 아예 타지 않게 한다.
- */
+const versionOf = pathname => {
+  const m = /routes\/(\d+)\.json$/.exec(pathname || '');
+  return m ? Number(m[1]) : 0;
+};
+
+/** 가장 최근 판을 찾는다. 메타데이터 목록은 즉시 갱신된다. */
+async function latestBlob() {
+  const { blobs } = await list({ prefix: PREFIX, limit: 100 });
+  if (!blobs.length) return null;
+  return blobs
+    .map(b => ({ ...b, version: versionOf(b.pathname) }))
+    .sort((a, b) => b.version - a.version)[0];
+}
+
 async function readStore() {
+  const newest = await latestBlob();
+  if (!newest) return { routes: [], version: 0 };
   try {
-    const meta = await head(KEY);
-    const version = new Date(meta.uploadedAt).getTime();
-    const bust = `${version}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const res = await fetch(`${meta.url}?v=${bust}`, { cache: 'no-store' });
-    if (!res.ok) return { ...EMPTY, version };
+    const res = await fetch(newest.url, { cache: 'no-store' });
+    if (!res.ok) return { routes: [], version: newest.version };
     const data = await res.json();
-    return { routes: data.routes || [], version };
+    return { routes: data.routes || [], version: newest.version };
   } catch {
-    return EMPTY;                           // 아직 한 번도 저장한 적 없음
+    return { routes: [], version: newest.version };
   }
+}
+
+/** 최근 몇 개만 남기고 정리한다 */
+async function prune() {
+  try {
+    const { blobs } = await list({ prefix: PREFIX, limit: 100 });
+    const old = blobs
+      .map(b => ({ ...b, version: versionOf(b.pathname) }))
+      .sort((a, b) => b.version - a.version)
+      .slice(KEEP);
+    if (old.length) await del(old.map(b => b.url));
+  } catch { /* 정리는 실패해도 저장에는 영향이 없다 */ }
 }
 
 export default async function handler(req, res) {
@@ -34,7 +59,6 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (req.method === 'GET') {
-    // 편집 키 확인용
     if (req.query && req.query.check !== undefined) {
       const key = process.env.EDIT_KEY;
       const ok = !!key && req.headers['x-edit-key'] === key;
@@ -45,9 +69,7 @@ export default async function handler(req, res) {
     return res.status(200).json(store);
   }
 
-  if (req.method !== 'PUT') {
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
+  if (req.method !== 'PUT') return res.status(405).json({ error: 'method_not_allowed' });
 
   const editKey = process.env.EDIT_KEY;
   if (!editKey) return res.status(500).json({ error: 'edit_key_not_configured' });
@@ -60,27 +82,24 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'bad_payload', message: 'routes 배열이 필요합니다' });
   }
 
-  const current = await readStore();
-  // 캐시 지연으로 옛 판이 보일 수 있으므로, "서버가 더 새로울 때"만 충돌로 본다
-  if (body.baseVersion !== undefined && current.version > body.baseVersion) {
+  const newest = await latestBlob();
+  const currentVersion = newest ? newest.version : 0;
+  if (body.baseVersion !== undefined && currentVersion > body.baseVersion) {
     return res.status(409).json({
       error: 'version_conflict',
       message: '다른 기기에서 먼저 저장했습니다. 새로고침 후 다시 시도하세요',
-      serverVersion: current.version,
+      serverVersion: currentVersion,
     });
   }
 
-  const blob = await put(KEY, JSON.stringify({ routes: body.routes }), {
+  const version = Math.max(Date.now(), currentVersion + 1);
+  await put(`${PREFIX}${version}.json`, JSON.stringify({ routes: body.routes }), {
     access: 'public',
     contentType: 'application/json',
     addRandomSuffix: false,
-    allowOverwrite: true,
     cacheControlMaxAge: 0,
   });
+  await prune();
 
-  // 판 번호는 저장 시각을 그대로 쓴다 (읽을 때와 같은 출처)
-  const meta = await head(KEY).catch(() => null);
-  const version = meta ? new Date(meta.uploadedAt).getTime() : Date.now();
-
-  return res.status(200).json({ ok: true, version, count: body.routes.length, url: blob.url });
+  return res.status(200).json({ ok: true, version, count: body.routes.length });
 }
