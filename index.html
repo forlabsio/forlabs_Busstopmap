@@ -43,7 +43,7 @@
   <button class="sheet-handle" id="sheet-handle" aria-label="패널 크기 조절"></button>
 
   <div class="panel-head">
-    <span class="viewer-badge">👁 보기 전용으로 공유된 노선</span>
+    <span class="viewer-badge" id="viewer-badge">보기 전용으로 공유된 노선</span>
 
     <div class="head-row">
       <div class="select" id="route-picker"></div>
@@ -140,6 +140,10 @@
   <button role="menuitem" id="tool-import">
     <svg viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 19h16"/></svg>
     <span>가져오기</span>
+  </button>
+  <button role="menuitem" id="tool-import-published">
+    <svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M12 11v4M10 13l2 2 2-2"/></svg>
+    <span>발행본 가져오기</span>
   </button>
   <button role="menuitem" id="tool-print">
     <svg viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><path d="M5 9h14v7H5z"/><path d="M7 16h10v4H7z"/></svg>

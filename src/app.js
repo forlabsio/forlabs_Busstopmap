@@ -922,6 +922,58 @@ function exportRoutes() {
   toast(`노선 ${S.store.routes.length}개를 파일로 내보냈습니다`);
 }
 
+/**
+ * 서버에 발행된 노선을 이 브라우저로 가져온다.
+ * 기기를 옮길 때 파일을 주고받지 않아도 되도록.
+ */
+async function importPublished() {
+  let index;
+  try {
+    const res = await fetch('published/index.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(String(res.status));
+    index = await res.json();
+  } catch {
+    return toast('발행된 노선이 없습니다');
+  }
+
+  const list = index.routes || [];
+  if (!list.length) return toast('발행된 노선이 없습니다');
+
+  toast(`발행본 ${list.length}개를 가져오는 중…`);
+  let added = 0, updated = 0;
+
+  for (const item of list) {
+    try {
+      const pub = await fetch(`published/${item.slug}.json`, { cache: 'no-store' }).then(r => r.json());
+      if (!Array.isArray(pub.stops) || !pub.stops.length) continue;
+      const id = pub.id || `route-pub-${item.slug}`;
+      const exists = S.store.routes.some(r => r.id === id);
+      upsertRoute(S.store, {
+        id,
+        name: pub.name || item.slug,
+        region: pub.region || null,
+        color: pub.color || undefined,
+        stops: pub.stops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng })),
+        createdAt: pub.createdAt || new Date().toISOString(),
+      });
+      exists ? updated++ : added++;
+    } catch {
+      console.warn('발행본을 읽지 못했습니다:', item.slug);
+    }
+  }
+
+  if (!added && !updated) return toast('가져올 노선이 없습니다');
+
+  try {
+    saveToBrowser(S.store);
+  } catch {
+    return toast('저장 공간이 부족합니다');
+  }
+  refreshRouteSelect();
+  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
+  toast(`발행본에서 ${added}개 추가, ${updated}개 갱신했습니다`, 4000);
+}
+
 function importRoutes(file) {
   const reader = new FileReader();
   reader.onload = e => {
@@ -969,12 +1021,23 @@ async function bootRouteFromUrl() {
     ({ name, ids, coords, names } = decoded);
   } else {
     try {
-      const pub = await fetch(`published/${slug}.json`).then(r => r.json());
+      const res = await fetch(`published/${slug}.json`);
+      if (!res.ok) throw new Error(String(res.status));
+      const pub = await res.json();
       name = pub.name || slug;
+      if (pub.color) S.route.color = pub.color;
+      if (pub.publishedAt) {
+        const d = new Date(pub.publishedAt);
+        setViewerBadge(`발행된 노선 · ${d.getMonth() + 1}월 ${d.getDate()}일 기준`);
+      } else {
+        setViewerBadge('발행된 노선');
+      }
       if (Array.isArray(pub.stops)) stops = pub.stops;
       else ids = pub.ids || [];
     } catch {
-      return toast(`"${slug}" 노선을 찾을 수 없습니다`);
+      enterViewerMode();
+      setViewerBadge(`"${slug}" 노선을 찾을 수 없습니다`);
+      return toast(`"${slug}" 노선을 찾을 수 없습니다`, 5000);
     }
   }
 
@@ -987,7 +1050,7 @@ async function bootRouteFromUrl() {
       name: (names && names[i]) || `정류장 ${i + 1}`,
     }));
     S.route = { id: null, name, region: null, color: S.route.color, stops };
-    renderPanel(); drawRoute({ fit: true });
+    renderPanel(); repaintRoute(); drawRoute({ fit: true });
 
     if (!names) fillNamesWhenReady(ids);       // 이름만 나중에 채운다
     return;
@@ -1005,7 +1068,7 @@ async function bootRouteFromUrl() {
   }
 
   S.route = { id: null, name, region: null, color: S.route.color, stops };
-  renderPanel(); drawRoute({ fit: true });
+  renderPanel(); repaintRoute(); drawRoute({ fit: true });
 }
 
 /** 이름이 빠진 링크는 데이터가 오면 조용히 채운다 */
@@ -1022,6 +1085,11 @@ function fillNamesWhenReady(ids) {
       renderPanel();
     })
     .catch(() => showDataPending(false));
+}
+
+function setViewerBadge(text) {
+  const el = $('viewer-badge');
+  if (el) el.textContent = text;
 }
 
 function enterViewerMode() {
@@ -1401,6 +1469,7 @@ function bindUI() {
   $('tool-delete').addEventListener('click', deleteRoute);
   $('tool-print').addEventListener('click', printRoute);
   $('tool-import').addEventListener('click', () => $('import-file').click());
+  $('tool-import-published').addEventListener('click', importPublished);
   $('import-file').addEventListener('change', e => {
     if (e.target.files[0]) importRoutes(e.target.files[0]);
     e.target.value = '';

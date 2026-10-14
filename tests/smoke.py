@@ -91,8 +91,10 @@ class Page:
         if not self.wait_for("!!document.querySelector('#route-picker .select-trigger')", 15, '앱 마크업'):
             print('    페이지가 앱이 아닙니다. URL을 확인하세요:', self.ev('location.href'))
             return False
-        return self.wait_for('!!(window.__app && __app.map && __app.map.loaded() && __app.stops.length)',
-                             timeout, '앱 초기화')
+        # 공유/발행 링크로 열면 정류장 6만 개를 받지 않는다. 지도 준비까지만 기다린다.
+        return self.wait_for(
+            "!!(window.__app && __app.map && performance.getEntriesByName('map-ready').length)",
+            timeout, '앱 초기화')
 
     def shot(self, path):
         r = self.send('Page.captureScreenshot', {'format': 'png'})
@@ -609,6 +611,55 @@ def main():
           p.ev("document.getElementById('theme-btn').getAttribute('aria-pressed')"))
     check('테마 전환 후 노선 유지', p.ev('__app.route.stops.length') == 190,
           p.ev('__app.route.stops.length'))
+
+    print('\n== 발행본 가져오기 ==')
+    p.ev("localStorage.removeItem('marathon-routes'); location.reload()")
+    time.sleep(3)
+    p.ready()
+    p.ev("window.confirm = () => true; window.alert = () => {};")
+    check('시작 시 저장된 노선 없음',
+          (p.ev("JSON.parse(localStorage.getItem('marathon-routes')||'{\"routes\":[]}').routes.length") or 0) == 0)
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-import-published').click()")
+    time.sleep(4)
+    imported = p.ev("JSON.parse(localStorage.getItem('marathon-routes')||'{\"routes\":[]}').routes.length")
+    check('발행본 2개를 가져옴', imported == 2, f'{imported}개')
+    check('정류장 수까지 그대로', p.ev("""(() => {
+      const rs = JSON.parse(localStorage.getItem('marathon-routes')).routes;
+      return rs.some(r => r.stops.length === 190) && rs.some(r => r.stops.length === 29);
+    })()"""))
+    check('드롭다운에 반영', (p.ev("""(() => {
+      document.querySelector('#route-picker .select-trigger').click();
+      const n = document.querySelectorAll('#route-picker .select-option').length;
+      document.querySelector('#route-picker .select-trigger').click();
+      return n;
+    })()""") or 0) >= 3)
+    # 다시 눌러도 중복되지 않아야 한다
+    p.ev("document.getElementById('menu-btn').click()")
+    time.sleep(0.4)
+    p.ev("document.getElementById('tool-import-published').click()")
+    time.sleep(4)
+    check('두 번 가져와도 중복 안 생김',
+          p.ev("JSON.parse(localStorage.getItem('marathon-routes')).routes.length") == 2,
+          p.ev("JSON.parse(localStorage.getItem('marathon-routes')).routes.length"))
+
+    print('\n== 발행된 노선 (고정 주소) ==')
+    p.ev("location.href = location.origin + location.pathname + '?w=sangam-yeouido'")
+    time.sleep(3)
+    p.ready()
+    p.wait_for("window.__app && __app.route.stops.length > 0", 40, '발행 노선')
+    check('고정 주소로 노선이 열림', p.ev('__app.route.stops.length') == 29,
+          p.ev('__app.route.stops.length'))
+    check('뷰어 모드로 뜸', p.ev("document.body.classList.contains('viewer')"))
+    check('발행 날짜가 표시됨', '발행된 노선' in (p.ev("document.getElementById('viewer-badge').textContent") or ''),
+          p.ev("document.getElementById('viewer-badge').textContent"))
+    check('정류장 데이터는 받지 않음',
+          p.ev("performance.getEntriesByType('resource').filter(r => r.name.includes('stops.json')).length") == 0)
+    check('없는 주소는 안내를 보여줌', p.ev("""(async () => {
+      const res = await fetch('published/없는노선.json');
+      return !res.ok;
+    })()"""))
 
     real_errors = [e for e in p.errors + p.eval_errors if e and 'favicon' not in str(e)]
     check('JS 예외 없음', not real_errors, real_errors[:2])
