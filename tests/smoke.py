@@ -215,8 +215,8 @@ def main():
     })()"""))
     check('메뉴에 관리 기능이 모여 있음',
           all(k in (items or '') for k in ['tool-compose', 'tool-new', 'tool-overlay',
-                                           'btn-export', 'tool-import', 'tool-print',
-                                           'tool-delete']), items)
+                                           'btn-export', 'tool-import', 'tool-editkey',
+                                           'tool-print', 'tool-delete']), items)
     if not MOBILE:
         check('메뉴가 ⋯ 버튼 아래에 뜸', p.ev("""(() => {
           const b = document.getElementById('menu-btn').getBoundingClientRect();
@@ -612,54 +612,48 @@ def main():
     check('테마 전환 후 노선 유지', p.ev('__app.route.stops.length') == 190,
           p.ev('__app.route.stops.length'))
 
-    print('\n== 발행본 가져오기 ==')
-    p.ev("localStorage.removeItem('marathon-routes'); location.reload()")
-    time.sleep(3)
-    p.ready()
-    p.ev("window.confirm = () => true; window.alert = () => {};")
-    check('시작 시 저장된 노선 없음',
-          (p.ev("JSON.parse(localStorage.getItem('marathon-routes')||'{\"routes\":[]}').routes.length") or 0) == 0)
-    p.ev("document.getElementById('menu-btn').click()")
-    time.sleep(0.4)
-    p.ev("document.getElementById('tool-import-published').click()")
-    time.sleep(4)
-    imported = p.ev("JSON.parse(localStorage.getItem('marathon-routes')||'{\"routes\":[]}').routes.length")
-    check('발행본 2개를 가져옴', imported == 2, f'{imported}개')
-    check('정류장 수까지 그대로', p.ev("""(() => {
-      const rs = JSON.parse(localStorage.getItem('marathon-routes')).routes;
-      return rs.some(r => r.stops.length === 190) && rs.some(r => r.stops.length === 29);
-    })()"""))
-    check('드롭다운에 반영', (p.ev("""(() => {
-      document.querySelector('#route-picker .select-trigger').click();
-      const n = document.querySelectorAll('#route-picker .select-option').length;
-      document.querySelector('#route-picker .select-trigger').click();
-      return n;
-    })()""") or 0) >= 3)
-    # 다시 눌러도 중복되지 않아야 한다
-    p.ev("document.getElementById('menu-btn').click()")
-    time.sleep(0.4)
-    p.ev("document.getElementById('tool-import-published').click()")
-    time.sleep(4)
-    check('두 번 가져와도 중복 안 생김',
-          p.ev("JSON.parse(localStorage.getItem('marathon-routes')).routes.length") == 2,
-          p.ev("JSON.parse(localStorage.getItem('marathon-routes')).routes.length"))
+    print('\n== 고정 공유 링크 (?id=) ==')
+    # 서버(/api/routes)가 있어야 동작한다. 로컬 정적 서버로 돌릴 때는 건너뛴다.
+    has_api = p.ev("""(async () => {
+      try { const r = await fetch('/api/routes', {cache:'no-store'}); return r.ok; }
+      catch { return false; }
+    })()""")
+    target = p.ev("""(async () => {
+      try {
+        const d = await (await fetch('/api/routes', {cache:'no-store'})).json();
+        return (d.routes[0] || {}).id || null;
+      } catch { return null; }
+    })()""") if has_api else None
 
-    print('\n== 발행된 노선 (고정 주소) ==')
-    p.ev("location.href = location.origin + location.pathname + '?w=sangam-yeouido'")
-    time.sleep(3)
-    p.ready()
-    p.wait_for("window.__app && __app.route.stops.length > 0", 40, '발행 노선')
-    check('고정 주소로 노선이 열림', p.ev('__app.route.stops.length') == 29,
-          p.ev('__app.route.stops.length'))
-    check('뷰어 모드로 뜸', p.ev("document.body.classList.contains('viewer')"))
-    check('발행 날짜가 표시됨', '발행된 노선' in (p.ev("document.getElementById('viewer-badge').textContent") or ''),
-          p.ev("document.getElementById('viewer-badge').textContent"))
-    check('정류장 데이터는 받지 않음',
-          p.ev("performance.getEntriesByType('resource').filter(r => r.name.includes('stops.json')).length") == 0)
-    check('없는 주소는 안내를 보여줌', p.ev("""(async () => {
-      const res = await fetch('published/없는노선.json');
-      return !res.ok;
-    })()"""))
+    if not has_api:
+        print('  (서버 API 없음 — 로컬 실행이라 건너뜀)')
+    elif target:
+        p.ev(f"location.href = location.origin + location.pathname + '?id={target}'")
+        time.sleep(3)
+        p.ready()
+        p.wait_for("window.__app && __app.route.stops.length > 0", 40, '고정 링크')
+        check('고정 링크로 노선이 열림', (p.ev('__app.route.stops.length') or 0) > 0,
+              p.ev('__app.route.stops.length'))
+        check('뷰어 모드로 뜸', p.ev("document.body.classList.contains('viewer')"))
+        check('검색·지역 필터가 숨겨짐',
+              p.ev("getComputedStyle(document.querySelector('.topbar')).display") == 'none')
+        check('노선 선택·메뉴가 숨겨짐', p.ev("""(() => {
+          const hidden = el => !el || getComputedStyle(el).display === 'none';
+          return hidden(document.getElementById('route-picker'))
+              && hidden(document.getElementById('menu-btn'))
+              && hidden(document.getElementById('btn-save'))
+              && hidden(document.getElementById('btn-share'));
+        })()"""))
+        check('인쇄 버튼만 남음',
+              p.ev("getComputedStyle(document.getElementById('btn-print-viewer')).display") != 'none')
+        check('정류장 목록은 보임',
+              (p.ev("document.querySelectorAll('#list .item').length") or 0) > 0)
+        check('항상 최신이라고 안내', '최신' in (p.ev("document.getElementById('viewer-badge').textContent") or ''),
+              p.ev("document.getElementById('viewer-badge').textContent"))
+        check('정류장 데이터는 받지 않음',
+              p.ev("performance.getEntriesByType('resource').filter(r => r.name.includes('stops.json')).length") == 0)
+    elif has_api:
+        print('  (서버에 저장된 노선이 없어 건너뜀)')
 
     real_errors = [e for e in p.errors + p.eval_errors if e and 'favicon' not in str(e)]
     check('JS 예외 없음', not real_errors, real_errors[:2])

@@ -41,7 +41,7 @@ const S = {
 /** 공유 링크로 열렸는가. 이 경우 정류장 6만 개를 지도에 올릴 필요가 없다. */
 const VIEWER_INTENT = (() => {
   const q = new URLSearchParams(location.search);
-  return q.has('r') || q.has('w');
+  return q.has('r') || q.has('id');
 })();
 
 const $ = id => document.getElementById(id);
@@ -238,13 +238,10 @@ function applyTheme(mode, { redraw = true } = {}) {
 /* ───────────────────────── 데이터 ───────────────────────── */
 
 async function loadStops() {
-  const inline = document.getElementById('stops-inline');
-  const rows = inline
-    ? JSON.parse(inline.textContent)
-    : await fetch('data/stops.json').then(r => {
-        if (!r.ok) throw new Error('정류장 데이터를 불러오지 못했습니다 (' + r.status + ')');
-        return r.json();
-      });
+  const rows = await fetch('data/stops.json').then(r => {
+    if (!r.ok) throw new Error('정류장 데이터를 불러오지 못했습니다 (' + r.status + ')');
+    return r.json();
+  });
   performance.mark('stops-loaded');
   S.stops = rows.map(([id, name, lat, lng, city]) => ({ id, name, lat, lng, city }));
   S.byId = new Map(S.stops.map(s => [s.id, s]));
@@ -1041,54 +1038,6 @@ function exportRoutes() {
   toast(`노선 ${S.store.routes.length}개를 파일로 내보냈습니다`);
 }
 
-/**
- * 서버에 발행된 노선을 이 브라우저로 가져온다.
- * 기기를 옮길 때 파일을 주고받지 않아도 되도록.
- */
-async function importPublished() {
-  let index;
-  try {
-    const res = await fetch('published/index.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error(String(res.status));
-    index = await res.json();
-  } catch {
-    return toast('발행된 노선이 없습니다');
-  }
-
-  const list = index.routes || [];
-  if (!list.length) return toast('발행된 노선이 없습니다');
-
-  toast(`발행본 ${list.length}개를 가져오는 중…`);
-  let added = 0, updated = 0;
-
-  for (const item of list) {
-    try {
-      const pub = await fetch(`published/${item.slug}.json`, { cache: 'no-store' }).then(r => r.json());
-      if (!Array.isArray(pub.stops) || !pub.stops.length) continue;
-      const id = pub.id || `route-pub-${item.slug}`;
-      const exists = S.store.routes.some(r => r.id === id);
-      upsertRoute(S.store, {
-        id,
-        name: pub.name || item.slug,
-        region: pub.region || null,
-        color: pub.color || undefined,
-        stops: pub.stops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng })),
-        createdAt: pub.createdAt || new Date().toISOString(),
-      });
-      exists ? updated++ : added++;
-    } catch {
-      console.warn('발행본을 읽지 못했습니다:', item.slug);
-    }
-  }
-
-  if (!added && !updated) return toast('가져올 노선이 없습니다');
-
-  await persist();
-  refreshRouteSelect();
-  if (S.overlay) { renderRoutesList(); drawAllRoutes(); }
-  toast(`발행본에서 ${added}개 추가, ${updated}개 갱신했습니다`, 4000);
-}
-
 function importRoutes(file) {
   const reader = new FileReader();
   reader.onload = e => {
@@ -1112,51 +1061,62 @@ function importRoutes(file) {
 
 async function shareLink() {
   if (!S.route.stops.length) return toast('정류장을 먼저 추가하세요');
-  const token = await encodeRoute({ name: S.route.name, stops: S.route.stops });
-  const url = `${location.origin}${location.pathname}?r=${token}`;
+
+  const saved = S.route.id && S.store.routes.some(r => r.id === S.route.id);
+  let url, note;
+
+  if (saved && S.online) {
+    // 저장된 노선은 고정 주소로 준다. 나중에 고쳐도 같은 주소에서 최신이 보인다.
+    url = `${location.origin}${location.pathname}?id=${S.route.id}`;
+    note = '고정 링크를 복사했습니다 — 노선을 고쳐도 같은 주소에서 최신이 보입니다';
+  } else {
+    const token = await encodeRoute({ name: S.route.name, stops: S.route.stops });
+    url = `${location.origin}${location.pathname}?r=${token}`;
+    note = saved ? '지금 모습 그대로의 링크를 복사했습니다'
+                 : '지금 모습 그대로의 링크를 복사했습니다 — 저장하면 고정 링크가 됩니다';
+  }
+
   try {
     await navigator.clipboard.writeText(url);
-    toast(`공유 링크를 복사했습니다 (${url.length}자)`);
+    toast(note, 4500);
   } catch {
-    prompt('아래 링크를 복사하세요', url);
+    setKeyMsg('');
+    toast(url, 8000);
   }
 }
 
 async function bootRouteFromUrl() {
   const params = new URLSearchParams(location.search);
   const token = params.get('r');
-  const slug = params.get('w');
-  if (!token && !slug) return;
+  const routeId = params.get('id');
+  if (!token && !routeId) return;
 
   let name = '', ids = [], coords = null, names = null, stops = null;
 
-  if (token) {
-    const decoded = await decodeRoute(token);
-    if (!decoded) return toast('공유 링크를 읽을 수 없습니다');
-    ({ name, ids, coords, names } = decoded);
-  } else {
-    try {
-      const res = await fetch(`published/${slug}.json`);
-      if (!res.ok) throw new Error(String(res.status));
-      const pub = await res.json();
-      name = pub.name || slug;
-      if (pub.color) S.route.color = pub.color;
-      if (pub.publishedAt) {
-        const d = new Date(pub.publishedAt);
-        setViewerBadge(`발행된 노선 · ${d.getMonth() + 1}월 ${d.getDate()}일 기준`);
-      } else {
-        setViewerBadge('발행된 노선');
-      }
-      if (Array.isArray(pub.stops)) stops = pub.stops;
-      else ids = pub.ids || [];
-    } catch {
-      enterViewerMode();
-      setViewerBadge(`"${slug}" 노선을 찾을 수 없습니다`);
-      return toast(`"${slug}" 노선을 찾을 수 없습니다`, 5000);
+  if (routeId) {
+    // 서버에 저장된 노선을 그대로 본다. 수정하면 이 주소에서 바로 최신이 보인다.
+    enterViewerMode();
+    const remote = await fetchRoutes();
+    const found = remote && remote.routes.find(r => r.id === routeId);
+    if (!found) {
+      setViewerBadge('노선을 찾을 수 없습니다');
+      return toast('노선을 찾을 수 없습니다. 삭제되었을 수 있습니다', 5000);
     }
+    S.route = {
+      id: null, name: found.name, region: null,
+      color: colorOf(found), stops: found.stops.map(x => ({ ...x })),
+    };
+    setViewerBadge('공유된 노선 · 항상 최신');
+    renderPanel(); repaintRoute(); drawRoute({ fit: true });
+    return;
   }
 
+  const decoded = await decodeRoute(token);
+  if (!decoded) return toast('공유 링크를 읽을 수 없습니다');
+  ({ name, ids, coords, names } = decoded);
+
   enterViewerMode();
+  setViewerBadge('보기 전용으로 공유된 노선');
 
   if (!stops && coords) {
     // 좌표가 링크에 들어 있다 -> 정류장 데이터를 기다리지 않고 바로 그린다
@@ -1212,15 +1172,7 @@ function enterViewerMode() {
   document.body.classList.add('viewer');
   if (innerWidth < 768) setSheet('peek');
   $('rename-btn').hidden = true;
-  $('btn-copy-mine').style.display = '';
-}
-
-function copyToMine() {
-  const name = uniqueName(S.store, S.route.name || '공유받은 노선');
-  const route = newRoute(name, null, S.route.stops);
-  upsertRoute(S.store, route);
-  persist();
-  toast(`"${name}"을 내 노선으로 저장했습니다. 편집하려면 주소에서 ?r=... 을 지우세요`, 4000);
+  $('foot-viewer').hidden = false;
 }
 
 /* ───────────────────────── 인쇄 ───────────────────────── */
@@ -1568,7 +1520,6 @@ function bindUI() {
   $('btn-save').addEventListener('click', saveRoute);
   $('btn-export').addEventListener('click', exportRoutes);
   $('btn-share').addEventListener('click', shareLink);
-  $('btn-copy-mine').addEventListener('click', copyToMine);
 
   $('tool-compose').addEventListener('click', () => setComposing(!S.composing));
 
@@ -1583,8 +1534,8 @@ function bindUI() {
   $('tool-overlay').addEventListener('click', () => setOverlay(!S.overlay));
   $('tool-delete').addEventListener('click', deleteRoute);
   $('tool-print').addEventListener('click', printRoute);
+  $('btn-print-viewer').addEventListener('click', printRoute);
   $('tool-import').addEventListener('click', () => $('import-file').click());
-  $('tool-import-published').addEventListener('click', importPublished);
   $('tool-editkey').addEventListener('click', askEditKey);
   $('key-save').addEventListener('click', submitEditKey);
   $('key-clear').addEventListener('click', clearEditKey);

@@ -96,10 +96,12 @@
   </div>
 
   <div class="panel-foot">
-    <div class="foot-row" id="foot-default">
+    <div class="foot-row editor-only" id="foot-default">
       <button class="btn ghost" id="btn-share">공유 링크</button>
-      <button class="btn editor-only" id="btn-save">노선 저장</button>
-      <button class="btn ghost" id="btn-copy-mine" hidden>내 노선으로 복사</button>
+      <button class="btn" id="btn-save">노선 저장</button>
+    </div>
+    <div class="foot-row viewer-only" id="foot-viewer" hidden>
+      <button class="btn ghost" id="btn-print-viewer">코스 인쇄</button>
     </div>
     <div class="foot-row" id="foot-compose" hidden>
       <button class="btn ghost" id="btn-wp-append" disabled hidden>뒤에 이어 붙이기</button>
@@ -145,10 +147,6 @@
   <button role="menuitem" id="tool-editkey">
     <svg viewBox="0 0 24 24"><path d="M15 7a4 4 0 11-3.8 5.2L7 16.4 5 18l-2-2 1.6-2 4.2-4.2A4 4 0 0115 7z"/></svg>
     <span>편집 권한</span>
-  </button>
-  <button role="menuitem" id="tool-import-published">
-    <svg viewBox="0 0 24 24"><path d="M4 6a2 2 0 012-2h4l2 2h6a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M12 11v4M10 13l2 2 2-2"/></svg>
-    <span>발행본 가져오기</span>
   </button>
   <button role="menuitem" id="tool-print">
     <svg viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><path d="M5 9h14v7H5z"/><path d="M7 16h10v4H7z"/></svg>
