@@ -292,6 +292,10 @@ function koreanLabels() {
   }
 }
 
+// 순번 글자 크기. 멀리서도 숫자를 읽어야 하니 낮은 배율까지 값을 둔다.
+const NUMBER_SIZE = ['interpolate', ['linear'], ['zoom'],
+  9, 7, 11, 8, 13, 9.5, 14, 10.5, 16, 12];
+
 function installLayers() {
   koreanLabels();
   const c = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -369,14 +373,16 @@ function installLayers() {
     },
   });
   S.map.addLayer({
-    id: 'all-numbers', type: 'symbol', source: 'routes-all', minzoom: 11.5,
+    id: 'all-numbers', type: 'symbol', source: 'routes-all',
     filter: ['==', ['geometry-type'], 'Point'],
     layout: {
       'text-field': ['to-string', ['get', 'n']],
       'text-font': ['Open Sans Bold'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8.5, 14, 10, 16, 12],
-      'text-allow-overlap': ['step', ['zoom'], false, 14.5, true],
-      'text-ignore-placement': ['step', ['zoom'], false, 14.5, true],
+      'text-size': NUMBER_SIZE,
+      // 순번은 어느 배율에서든 빠짐없이 보여준다. 겹쳐서 숨기면
+      // "모두 켜기"를 눌러도 숫자가 안 보이는 것처럼 느껴진다.
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
       'text-padding': 1,
     },
     paint: {
@@ -411,15 +417,14 @@ function installLayers() {
     },
   });
   S.map.addLayer({
-    id: 'route-numbers', type: 'symbol', source: 'route', minzoom: 11.5,
+    id: 'route-numbers', type: 'symbol', source: 'route',
     filter: ['==', ['geometry-type'], 'Point'],
     layout: {
       'text-field': ['to-string', ['get', 'n']],
       'text-font': ['Open Sans Bold'],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8.5, 14, 10, 16, 12],
-      // 멀리서는 겹치면 숨기고, 작업하려고 확대하면 모두 보여준다
-      'text-allow-overlap': ['step', ['zoom'], false, 14.5, true],
-      'text-ignore-placement': ['step', ['zoom'], false, 14.5, true],
+      'text-size': NUMBER_SIZE,
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
       'text-padding': 1,
     },
     paint: {
@@ -467,7 +472,7 @@ function drawAllRoutes() {
       // 편집 중인 노선과 똑같이 정류장마다 순번을 붙인다
       r.stops.forEach((stop, i) => fc.features.push({
         type: 'Feature',
-        properties: { color, n: i + 1, edge: i === 0 || i === r.stops.length - 1 },
+        properties: { rid: r.id, color, n: i + 1, edge: i === 0 || i === r.stops.length - 1 },
         geometry: { type: 'Point', coordinates: [stop.lng, stop.lat] },
       }));
     }

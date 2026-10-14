@@ -460,6 +460,44 @@ def main():
       return pts.length > 0 && pts.every(f => typeof f.properties.n === 'number')
           && pts.every(f => !!f.properties.color);
     })()"""))
+
+    # 멀리서도 순번이 빠지지 않아야 한다. 190개 노선을 낮은 배율로 보는 것이
+    # "모두 켜기 했는데 숫자가 안 보인다"고 한 바로 그 상황이다.
+    def placed_vs_viewport(layer):
+        placed = p.ev("""(() => {
+          const seen = new Set();
+          for (const f of __app.map.queryRenderedFeatures({ layers: ['%s'] })) {
+            seen.add((f.properties.rid || 'cur') + '#' + f.properties.n);
+          }
+          return seen.size;
+        })()""" % layer)
+        want = p.ev("""(() => {
+          const b = __app.map.getBounds();
+          const src = __app.map.getLayer('%s').source;
+          return __app.map.getSource(src)._data.features
+            .filter(f => f.geometry.type === 'Point')
+            .filter(f => {
+              const [lng, lat] = f.geometry.coordinates;
+              return lng >= b.getWest() && lng <= b.getEast()
+                  && lat >= b.getSouth() && lat <= b.getNorth();
+            }).length;
+        })()""" % layer)
+        return placed, want
+
+    p.ev("__app.api.fitAllRoutes()")
+    time.sleep(2.0)
+    p.ev("__app.map.jumpTo({ zoom: 10 })")
+    time.sleep(2.5)
+    z = p.ev("__app.map.getZoom()")
+    pl, wn = placed_vs_viewport('route-numbers')
+    check('190개 노선을 멀리서 봐도 순번이 다 보임', pl == wn and wn > 100,
+          f'배율 {z:.1f} — {pl}개 / 화면 안 {wn}개')
+    pl, wn = placed_vs_viewport('all-numbers')
+    check('전체 보기 순번도 멀리서 다 보임', pl == wn and wn > 0,
+          f'{pl}개 / 화면 안 {wn}개')
+    check('순번 레이어에 배율 하한이 없음', all(
+        p.ev("__app.map.getLayer('%s').minzoom" % l) in (0, None)
+        for l in ('all-numbers', 'route-numbers')))
     # 색은 사용자가 고르는 값이라 겹칠 수 있다. 목록 점이 각 노선의 색과 맞는지만 본다.
     check('목록의 색 점이 각 노선 색과 일치', p.ev("""(() => {
       const toRgb = hex => {
